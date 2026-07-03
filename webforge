@@ -102,6 +102,18 @@ Rules and preferences you want across ALL projects live at:
         gitignore.write_text(".webforge/\n")
         print(f"Created .gitignore with .webforge/")
 
+    # Symlink .opencode/ for OpenCode slash commands
+    project_opencode = project / ".opencode"
+    webforge_opencode = WEBFORGE_REPO / ".opencode"
+    if webforge_opencode.exists():
+        if not project_opencode.exists():
+            project_opencode.symlink_to(webforge_opencode, target_is_directory=True)
+            print(f"  Symlinked .opencode/ (slash commands available)")
+        elif project_opencode.is_symlink() and project_opencode.resolve() == webforge_opencode.resolve():
+            print(f"  .opencode/ already symlinked to WebForge")
+        else:
+            print(f"  .opencode/ exists (not WebForge) -- skipping")
+
     print(f"✓ WebForge initialized at {wf}")
     print(f"  - memory/, rules/, logs/, tasks/ folders created")
     print(f"  - preferences.md, README.md created")
