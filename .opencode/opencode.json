@@ -83,6 +83,22 @@
     "registry": {
       "description": "Show the WebForge Agent Registry",
       "template": "cat {{.WebForge}}/REGISTRY.md"
+    },
+    "probe": {
+      "description": "Probe the current project (auto-detects fresh vs existing). Scans codebase, identifies what's decided/missing.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/probe.py probe auto"
+    },
+    "probe-existing": {
+      "description": "Probe an EXISTING project — scans codebase without asking questions. Use for projects that already have code.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/probe.py probe existing"
+    },
+    "probe-fresh": {
+      "description": "Probe a FRESH project — asks questions. Use for new projects with no code yet.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/probe.py probe fresh"
+    },
+    "scan": {
+      "description": "Scan the project and print a complete map (pages, components, API routes, ADRs, tests, git info).",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/probe.py scan"
     }
   },
   "mcp": {}
