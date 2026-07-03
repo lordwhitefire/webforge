@@ -1,0 +1,7 @@
+# WebForge — Python dependencies
+# Install with: pip install -r requirements.txt
+
+# No external dependencies required — WebForge uses only Python stdlib.
+# This file exists for future expansion and to document Python version.
+
+# Python 3.10+ required (uses match statements, type hints, pathlib)

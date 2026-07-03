@@ -1,266 +1,428 @@
 #!/usr/bin/env python3
 """
-MCP 2 — Memory MCP
-Tier 1 — Foundation
+WebForge Memory MCP (v2)
 
-Reads and writes all memory files. Controls the 300-line rule (Law 2).
-Checks if a memory file is at 80% (240 lines), triggers new generation.
-This stops two agents writing to the same file at the same time.
+The heart of WebForge. Handles 4 types of memory:
 
-Owner: Quill (Documentation Lead)
+1. SESSION LOG — what we did today, where we stopped
+   File: <project>/.webforge/memory/session-YYYY-MM.md (splits when hits 240 lines)
+
+2. RULES — do's and don'ts the developer has set
+   Folder: <project>/.webforge/rules/
+   Each rule is one file: <timestamp>-<slug>.md
+   Global rules: ~/.webforge/global-rules/ (travel with you across projects)
+
+3. PREFERENCES — what the developer likes/dislikes
+   File: <project>/.webforge/preferences.md
+   Global: ~/.webforge/global-preferences.md
+
+4. ADRs — Architecture Decision Records
+   Folder: <project>/docs/adr/ (industry standard location)
+   Format: NNNN-title.md (numbered)
+
+Law 2 (300-line rule) applies to session log and preferences.
+Rules and ADRs are RECORDS — never compacted.
 """
 
+import os
 import sys
-import re
+import json
+import hashlib
 from pathlib import Path
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent))
-from common import (write_log, count_lines, MEMORY_DIR, MEMORY_MAX_LINES,
-                    MEMORY_SPLIT_THRESHOLD, success, fail, McpResult, utc_now)
+from common import write_log, success, fail, utc_now, McpResult, get_project_root
 
 
-def _lock_file(path: Path) -> Path:
-    """Create a lock file to prevent concurrent writes."""
-    return path.with_suffix(path.suffix + ".lock")
+# ── Paths ──
+def webforge_dir() -> Path:
+    """The .webforge folder inside the project."""
+    return get_project_root() / ".webforge"
+
+def global_webforge_dir() -> Path:
+    """The ~/.webforge folder — travels with you across projects."""
+    return Path.home() / ".webforge"
+
+def session_log_file() -> Path:
+    """Current session log file. Splits by month to stay under 300 lines."""
+    wf = webforge_dir() / "memory"
+    wf.mkdir(parents=True, exist_ok=True)
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    return wf / f"session-{month}.md"
+
+def rules_dir() -> Path:
+    d = webforge_dir() / "rules"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+def global_rules_dir() -> Path:
+    d = global_webforge_dir() / "global-rules"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+def preferences_file() -> Path:
+    return webforge_dir() / "preferences.md"
+
+def global_preferences_file() -> Path:
+    return global_webforge_dir() / "global-preferences.md"
+
+def adr_dir() -> Path:
+    """ADRs live in the project's docs/adr/ (industry standard)."""
+    d = get_project_root() / "docs" / "adr"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
-def _is_locked(path: Path) -> bool:
-    return _lock_file(path).exists()
+def info() -> dict:
+    return {
+        "id": "m02",
+        "name": "Memory MCP v2",
+        "tier": 1,
+        "owner": "Quill",
+        "job": "Session log, rules, preferences, ADRs. The heart of WebForge memory.",
+    }
 
 
-def _acquire_lock(path: Path, agent: str) -> bool:
-    lock = _lock_file(path)
-    if lock.exists():
-        return False
-    lock.write_text(f"{agent}\n{utc_now()}\n")
-    return True
+# ── Session log ──
+def session_append(entry: str, agent: str = "Unknown", kind: str = "note") -> McpResult:
+    """Append an entry to today's session log."""
+    log_file = session_log_file()
+
+    lines = 0
+    if log_file.exists():
+        lines = sum(1 for _ in log_file.open())
+
+    if lines >= 240:
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+        parts = list((webforge_dir() / "memory").glob(f"session-{month}-part-*.md"))
+        next_part = len(parts) + 1
+        new_name = log_file.parent / f"session-{month}-part-{next_part:02d}.md"
+        log_file.rename(new_name)
+        log_file = session_log_file()
+        log_file.write_text(f"# Session log — {month} (part {next_part + 1})\n\nContinued from {new_name.name}.\n\n---\n\n")
+
+    timestamp = utc_now()
+    kind_emoji = {
+        "note": "📝",
+        "decision": "✅",
+        "correction": "⚠️",
+        "stop": "🛑",
+        "resume": "▶️",
+        "rule": "📏",
+        "preference": "❤️",
+    }.get(kind, "📝")
+
+    line = f"- **[{timestamp}]** {kind_emoji} **{agent}**: {entry}\n"
+
+    if not log_file.exists() or log_file.stat().st_size == 0:
+        log_file.write_text(f"# Session log — {datetime.now(timezone.utc).strftime('%Y-%m')}\n\n---\n\n")
+
+    with log_file.open("a", encoding="utf-8") as f:
+        f.write(line)
+
+    write_log("Memory", agent, "session_append",
+              {"kind": kind, "chars": len(entry), "file": log_file.name})
+    return success({"file": log_file.name, "kind": kind})
 
 
-def _release_lock(path: Path):
-    lock = _lock_file(path)
-    if lock.exists():
-        lock.unlink()
+def session_read(days: int = 7) -> McpResult:
+    """Read the last N days of session logs."""
+    wf = webforge_dir() / "memory"
+    if not wf.exists():
+        return success({"entries": [], "note": "No session logs yet."})
+
+    files = sorted(wf.glob("session-*.md"), reverse=True)
+    cutoff = datetime.now(timezone.utc).timestamp() - (days * 86400)
+    entries = []
+
+    for f in files:
+        for line in f.read_text(encoding="utf-8").split("\n"):
+            if line.startswith("- **["):
+                ts_match = line.split("**[")[1].split("]")[0]
+                try:
+                    ts = datetime.fromisoformat(ts_match).timestamp()
+                    if ts >= cutoff:
+                        entries.append(line)
+                except:
+                    entries.append(line)
+
+    return success({"entries": entries, "count": len(entries)})
 
 
-def get_current_generation() -> int:
-    """Find the highest generation number in the memory folder."""
-    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
-    gens = []
-    for f in MEMORY_DIR.glob("memory-gen-*.md"):
-        m = re.match(r"memory-gen-(\d+)\.md", f.name)
-        if m:
-            gens.append(int(m.group(1)))
-    return max(gens) if gens else 0
+def session_stop(summary: str = "") -> McpResult:
+    """Mark the end of a session — where we stopped, what's next."""
+    if not summary:
+        summary = input("Where did you stop? What's next? > ")
+
+    session_append(f"STOP — {summary}", agent="Developer", kind="stop")
+    return success({"stopped": True, "summary": summary})
 
 
-def get_current_file() -> Path:
-    """Get the path of the current (latest) memory generation file."""
-    gen = get_current_generation()
-    if gen == 0:
-        return MEMORY_DIR / "memory-gen-001.md"
-    return MEMORY_DIR / f"memory-gen-{gen:03d}.md"
+# ── Rules ──
+def add_rule(rule_text: str, scope: str = "project", source: str = "developer") -> McpResult:
+    """Add a new rule. Rules are RECORDS — never compacted."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    slug = hashlib.md5(rule_text.encode()).hexdigest()[:8]
 
+    if scope == "global":
+        target_dir = global_rules_dir()
+    else:
+        target_dir = rules_dir()
 
-def create_new_generation(summary_lines: list = None) -> McpResult:
-    """
-    Law 2: When a memory file reaches 300 lines, create a new generation.
-    First 20-30 lines of new file MUST be a summary of the previous.
-    """
-    current_gen = get_current_generation()
-    new_gen = current_gen + 1
-    new_file = MEMORY_DIR / f"memory-gen-{new_gen:03d}.md"
+    filename = f"{timestamp}-{slug}.md"
+    filepath = target_dir / filename
 
-    # Auto-generate summary from previous generation if not provided
-    if summary_lines is None:
-        summary_lines = _summarize_generation(current_gen)
+    content = f"""# Rule: {rule_text}
 
-    header = f"""# WebForge Project Memory — Generation {new_gen:03d}
+- **Added:** {utc_now()}
+- **Scope:** {scope}
+- **Source:** {source}
+- **Status:** active
 
-**Previous Generation:** {current_gen:03d}
-**Created:** {utc_now()}
+## Rule
+{rule_text}
 
----
+## Context
+<!-- Why was this rule added? What happened that made it necessary? -->
 
-## Summary of Previous Generation
+## Enforcement
+<!-- How is this rule enforced? Lint rule? Skill file? Manual review? -->
+- [ ] Add to skill files (relevant agents)
+- [ ] Add to lint rules (if automatable)
+- [ ] Add to AGENTS.md (if universal)
 
-{chr(10).join(summary_lines)}
-
----
-
-## New Content
-
+## Origin
+<!-- The session log entry or conversation that triggered this rule -->
 """
-    new_file.write_text(header)
-    write_log("Memory", "Quill", "new_generation",
-              {"new_gen": new_gen, "previous_gen": current_gen,
-               "summary_lines": len(summary_lines)})
-    print(f"[Memory] Created new generation: {new_file.name}")
-    return success({"new_file": str(new_file), "generation": new_gen})
+
+    filepath.write_text(content, encoding="utf-8")
+    session_append(f"NEW RULE ({scope}): {rule_text}", agent="Quill", kind="rule")
+    write_log("Memory", "Quill", "add_rule",
+              {"rule": rule_text, "scope": scope, "file": filepath.name})
+    return success({"file": filepath.name, "scope": scope, "rule": rule_text})
 
 
-def _summarize_generation(gen: int) -> list:
-    """
-    Law 2: Auto-generate a 20-30 line summary of the previous generation.
-    Extracts key info: decisions, build progress, active agents, pending questions.
-    """
-    if gen == 0:
-        return ["(No previous generation — this is the first memory file.)"]
+def list_rules(scope: str = "all") -> McpResult:
+    """List all rules."""
+    rules = []
+    if scope in ("project", "all"):
+        for f in sorted(rules_dir().glob("*.md")):
+            rules.append({"scope": "project", "file": f.name, "path": str(f)})
+    if scope in ("global", "all"):
+        for f in sorted(global_rules_dir().glob("*.md")):
+            rules.append({"scope": "global", "file": f.name, "path": str(f)})
+    return success({"rules": rules, "count": len(rules)})
 
-    prev_file = MEMORY_DIR / f"memory-gen-{gen:03d}.md"
-    if not prev_file.exists():
-        return [f"(Previous generation file not found: {prev_file.name})"]
 
-    content = prev_file.read_text(encoding="utf-8")
-    lines = content.split("\n")
+def read_rules() -> str:
+    """Read all active rules and return as a single text block (for LLM context)."""
+    parts = []
 
-    summary = []
-    summary.append(f"**Previous file:** `{prev_file.name}` ({len(lines)} lines)")
-    summary.append("")
+    global_dir = global_rules_dir()
+    if global_dir.exists():
+        global_rules = sorted(global_dir.glob("*.md"))
+        if global_rules:
+            parts.append("## GLOBAL RULES (apply to all projects)\n")
+            for f in global_rules:
+                content = f.read_text(encoding="utf-8")
+                try:
+                    rule_section = content.split("## Rule")[1].split("## Context")[0].strip()
+                    parts.append(f"- {rule_section}")
+                except IndexError:
+                    parts.append(f"- (malformed rule file: {f.name})")
 
-    # Extract decisions (look for | date | area | patterns or "Decision:" lines)
-    decisions = []
-    for line in lines:
-        if "DECIDED" in line.upper() or "Decision:" in line:
-            decisions.append(line.strip())
-        elif line.startswith("| ") and "|" in line[2:]:
-            # Table row — include if it has content
-            if any(kw in line.lower() for kw in ["decided", "skip", "pending", "done", "completed", "started"]):
-                decisions.append(line.strip())
+    proj_dir = rules_dir()
+    if proj_dir.exists():
+        proj_rules = sorted(proj_dir.glob("*.md"))
+        if proj_rules:
+            parts.append("\n## PROJECT RULES (this project only)\n")
+            for f in proj_rules:
+                content = f.read_text(encoding="utf-8")
+                try:
+                    rule_section = content.split("## Rule")[1].split("## Context")[0].strip()
+                    parts.append(f"- {rule_section}")
+                except IndexError:
+                    parts.append(f"- (malformed rule file: {f.name})")
 
-    summary.append("**Key decisions / progress from previous gen:**")
-    if decisions:
-        # Take up to 15 most important
-        seen = set()
-        unique = []
-        for d in decisions:
-            if d not in seen and len(unique) < 15:
-                seen.add(d)
-                unique.append(d)
-        for d in unique:
-            summary.append(f"- {d[:200]}")
+    return "\n".join(parts) if parts else "(no rules set)"
+
+
+# ── Preferences ──
+def add_preference(pref_text: str, scope: str = "project") -> McpResult:
+    """Add a preference. Preferences are softer than rules."""
+    target = global_preferences_file() if scope == "global" else preferences_file()
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    if not target.exists():
+        target.write_text(f"# Preferences\n\nWhat the developer likes and dislikes.\n\n---\n\n")
+
+    with target.open("a", encoding="utf-8") as f:
+        f.write(f"- {pref_text}\n")
+
+    session_append(f"NEW PREFERENCE ({scope}): {pref_text}", agent="Quill", kind="preference")
+    return success({"file": target.name, "preference": pref_text})
+
+
+def read_preferences() -> str:
+    """Read all preferences as text for LLM context."""
+    parts = []
+    g = global_preferences_file()
+    if g.exists():
+        parts.append("## GLOBAL PREFERENCES\n")
+        parts.append(g.read_text(encoding="utf-8"))
+    p = preferences_file()
+    if p.exists():
+        parts.append("\n## PROJECT PREFERENCES\n")
+        parts.append(p.read_text(encoding="utf-8"))
+    return "\n".join(parts) if parts else "(no preferences set)"
+
+
+# ── ADRs ──
+def add_adr(title: str, context: str, decision: str, consequences: str = "") -> McpResult:
+    """Add an ADR. Industry-standard Michael Nygard template."""
+    d = adr_dir()
+    existing = sorted(d.glob("[0-9][0-9][0-9][0-9]-*.md"))
+    if existing:
+        last_num = int(existing[-1].name[:4])
+        next_num = last_num + 1
     else:
-        summary.append("- (No structured decisions found — read previous file for context.)")
+        next_num = 1
 
-    summary.append("")
-    summary.append(f"**Total lines in previous:** {len(lines)}")
-    summary.append(f"**Generated:** {utc_now()}")
-    return summary
+    slug = title.lower().replace(" ", "-").replace(":", "")[:50]
+    slug = "".join(c for c in slug if c.isalnum() or c == "-")
 
+    filename = f"{next_num:04d}-{slug}.md"
+    filepath = d / filename
 
+    content = f"""# {next_num:04d}. {title}
 
-def append(content: str, agent: str, section: str = "") -> McpResult:
-    """
-    Append content to the current memory file.
-    Checks 300-line rule. If at threshold, creates new generation.
-    Acquires lock to prevent concurrent writes.
-    """
-    memory_file = get_current_file()
+Date: {datetime.now(timezone.utc).strftime("%Y-%m-%d")}
 
-    if not memory_file.exists():
-        memory_file.write_text("# WebForge Project Memory — Generation 001\n\n")
+## Status
 
-    if _is_locked(memory_file):
-        return fail(f"Memory file is locked by another agent. Try again later.")
+Accepted
 
-    if not _acquire_lock(memory_file, agent):
-        return fail(f"Could not acquire lock on {memory_file}")
+## Context
 
-    try:
-        # Check line count
-        line_count = count_lines(memory_file)
-        if line_count >= MEMORY_SPLIT_THRESHOLD:
-            # Need new generation
-            _release_lock(memory_file)
-            new_gen_result = create_new_generation()
-            if not new_gen_result.ok:
-                return new_gen_result
-            memory_file = get_current_file()
-            if not _acquire_lock(memory_file, agent):
-                return fail("Could not acquire lock on new generation file")
+{context}
 
-        # Append content
-        timestamp = utc_now()
-        section_header = f"\n## [{timestamp}] {agent}" + (f" — {section}\n" if section else "\n")
-        with open(memory_file, "a", encoding="utf-8") as f:
-            f.write(section_header + content + "\n")
+## Decision
 
-        write_log("Memory", agent, "append",
-                  {"file": memory_file.name, "section": section, "chars": len(content)})
-        return success({"file": memory_file.name, "appended": True})
+{decision}
 
-    finally:
-        _release_lock(memory_file)
+## Consequences
+
+{consequences or '(to be filled as consequences emerge)'}
+
+---
+*ADR created via WebForge Memory MCP*
+"""
+    filepath.write_text(content, encoding="utf-8")
+    session_append(f"NEW ADR #{next_num:04d}: {title}", agent="Quill", kind="decision")
+    write_log("Memory", "Quill", "add_adr",
+              {"number": next_num, "title": title, "file": filepath.name})
+    return success({"file": filepath.name, "number": next_num})
 
 
-def read(generation: int = None) -> McpResult:
-    """Read a memory file. If no generation given, read current."""
-    if generation is None:
-        memory_file = get_current_file()
-    else:
-        memory_file = MEMORY_DIR / f"memory-gen-{generation:03d}.md"
-
-    if not memory_file.exists():
-        return fail(f"Memory file not found: {memory_file.name}")
-
-    content = memory_file.read_text(encoding="utf-8")
-    return success({"file": memory_file.name, "content": content})
-
-
-def search(query: str) -> McpResult:
-    """Search across all memory generations."""
-    results = []
-    for f in sorted(MEMORY_DIR.glob("memory-gen-*.md")):
-        content = f.read_text(encoding="utf-8")
-        for i, line in enumerate(content.split("\n"), 1):
-            if query.lower() in line.lower():
-                results.append({
-                    "file": f.name,
-                    "line": i,
-                    "text": line.strip(),
-                })
-    return success({"query": query, "matches": results})
+def list_adrs() -> McpResult:
+    """List all ADRs."""
+    d = adr_dir()
+    if not d.exists():
+        return success({"adrs": [], "count": 0})
+    adrs = []
+    for f in sorted(d.glob("*.md")):
+        first_line = f.read_text(encoding="utf-8").split("\n")[0]
+        title = first_line.lstrip("# ").strip()
+        adrs.append({"file": f.name, "title": title})
+    return success({"adrs": adrs, "count": len(adrs)})
 
 
-def status() -> McpResult:
-    """Show current memory status."""
-    current = get_current_file()
-    lines = count_lines(current) if current.exists() else 0
-    return success({
-        "current_file": current.name,
-        "current_generation": get_current_generation(),
-        "lines": lines,
-        "max_lines": MEMORY_MAX_LINES,
-        "split_threshold": MEMORY_SPLIT_THRESHOLD,
-        "needs_new_generation": lines >= MEMORY_SPLIT_THRESHOLD,
-    })
+# ── Full context ──
+def get_full_context() -> dict:
+    """Get EVERYTHING WebForge knows about this project. Used by /resume."""
+    return {
+        "project_root": str(get_project_root()),
+        "session_logs": [str(f) for f in (webforge_dir() / "memory").glob("session-*.md")] if (webforge_dir() / "memory").exists() else [],
+        "rules": {
+            "project": [str(f) for f in rules_dir().glob("*.md")] if rules_dir().exists() else [],
+            "global": [str(f) for f in global_rules_dir().glob("*.md")] if global_rules_dir().exists() else [],
+        },
+        "preferences": {
+            "project": str(preferences_file()) if preferences_file().exists() else None,
+            "global": str(global_preferences_file()) if global_preferences_file().exists() else None,
+        },
+        "adrs": [str(f) for f in adr_dir().glob("*.md")] if adr_dir().exists() else [],
+    }
 
 
-# CLI
+# ── CLI ──
 if __name__ == "__main__":
     if len(sys.argv) < 2:
+        print("Memory MCP v2")
         print("Usage: python memory.py <command> [args]")
-        print("Commands: status, read [gen], append <content> <agent> [section],")
-        print("          search <query>, new-gen [summary]")
+        print()
+        print("Session log:")
+        print("  session-append <entry> [agent] [kind]")
+        print("  session-read [days]")
+        print("  session-stop [summary]")
+        print()
+        print("Rules:")
+        print("  add-rule <rule> [scope] [source]")
+        print("  list-rules [scope]")
+        print("  read-rules")
+        print()
+        print("Preferences:")
+        print("  add-preference <pref> [scope]")
+        print("  read-preferences")
+        print()
+        print("ADRs:")
+        print("  add-adr <title> <context> <decision> [consequences]")
+        print("  list-adrs")
+        print()
+        print("Context:")
+        print("  get-context")
         sys.exit(1)
 
     cmd = sys.argv[1]
-    if cmd == "status":
-        print(status().to_dict())
-    elif cmd == "read":
-        gen = int(sys.argv[2]) if len(sys.argv) > 2 else None
-        result = read(gen)
-        if result.ok:
-            print(result.data["content"])
-        else:
-            print(result.error)
-    elif cmd == "append":
-        content = sys.argv[2]
+    if cmd == "info":
+        print(json.dumps(info(), indent=2))
+    elif cmd == "session-append":
+        entry = sys.argv[2]
         agent = sys.argv[3] if len(sys.argv) > 3 else "Unknown"
-        section = sys.argv[4] if len(sys.argv) > 4 else ""
-        print(append(content, agent, section).to_dict())
-    elif cmd == "search":
-        print(search(sys.argv[2]).to_dict())
-    elif cmd == "new-gen":
-        print(create_new_generation().to_dict())
+        kind = sys.argv[4] if len(sys.argv) > 4 else "note"
+        print(session_append(entry, agent, kind).to_dict())
+    elif cmd == "session-read":
+        days = int(sys.argv[2]) if len(sys.argv) > 2 else 7
+        print(session_read(days).to_dict())
+    elif cmd == "session-stop":
+        summary = sys.argv[2] if len(sys.argv) > 2 else ""
+        print(session_stop(summary).to_dict())
+    elif cmd == "add-rule":
+        rule = sys.argv[2]
+        scope = sys.argv[3] if len(sys.argv) > 3 else "project"
+        source = sys.argv[4] if len(sys.argv) > 4 else "developer"
+        print(add_rule(rule, scope, source).to_dict())
+    elif cmd == "list-rules":
+        scope = sys.argv[2] if len(sys.argv) > 2 else "all"
+        print(list_rules(scope).to_dict())
+    elif cmd == "read-rules":
+        print(read_rules())
+    elif cmd == "add-preference":
+        pref = sys.argv[2]
+        scope = sys.argv[3] if len(sys.argv) > 3 else "project"
+        print(add_preference(pref, scope).to_dict())
+    elif cmd == "read-preferences":
+        print(read_preferences())
+    elif cmd == "add-adr":
+        title = sys.argv[2]
+        context = sys.argv[3]
+        decision = sys.argv[4]
+        consequences = sys.argv[5] if len(sys.argv) > 5 else ""
+        print(add_adr(title, context, decision, consequences).to_dict())
+    elif cmd == "list-adrs":
+        print(list_adrs().to_dict())
+    elif cmd == "get-context":
+        print(json.dumps(get_full_context(), indent=2))
     else:
         print(f"Unknown command: {cmd}")

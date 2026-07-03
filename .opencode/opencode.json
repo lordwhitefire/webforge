@@ -1,0 +1,125 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "{{.WebForge}}/AGENTS.md"
+  ],
+  "agent": {
+    "webforge": {
+      "description": "WebForge — AI agent organization that builds and maintains websites",
+      "mode": "primary",
+      "prompt": "{{.WebForge}}/AGENTS.md",
+      "tools": {
+        "bash": {},
+        "edit": {},
+        "write": {},
+        "read": {},
+        "grep": {},
+        "glob": {},
+        "webfetch": {}
+      }
+    }
+  },
+  "command": {
+    "resume": {
+      "description": "Resume a WebForge session — read all memory, rules, and where we stopped",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/webforge resume"
+    },
+    "init": {
+      "description": "Initialize WebForge in the current project",
+      "command": "python3 {{.WebForge}}/webforge init \"$OPENCODE_CWD\""
+    },
+    "on": {
+      "description": "Turn WebForge ON for current project",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/webforge on"
+    },
+    "off": {
+      "description": "Turn WebForge OFF for current project (saves session)",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/webforge off"
+    },
+    "status": {
+      "description": "Check WebForge status for current project",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/webforge status"
+    },
+    "rules": {
+      "description": "List all rules (do's and don'ts) for this project",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py read-rules"
+    },
+    "add-rule": {
+      "description": "Add a new rule. Usage: /add-rule <rule text>",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py add-rule \"$1\" project developer"
+    },
+    "preferences": {
+      "description": "Read all preferences (likes/dislikes)",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py read-preferences"
+    },
+    "add-preference": {
+      "description": "Add a preference. Usage: /add-preference <preference text>",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py add-preference \"$1\" project"
+    },
+    "adrs": {
+      "description": "List all Architecture Decision Records",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py list-adrs"
+    },
+    "add-adr": {
+      "description": "Add a new ADR. Usage: /add-adr <title> | <context> | <decision>",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 -c \"\nimport sys\nsys.path.insert(0, '{{.WebForge}}/mcp')\nfrom memory import add_adr\nimport os\nos.environ['WEBFORGE_PROJECT'] = os.environ.get('OPENCODE_CWD', '.')\nparts = '$1'.split('|')\nif len(parts) >= 3:\n    print(add_adr(parts[0].strip(), parts[1].strip(), parts[2].strip(), parts[3].strip() if len(parts) > 3 else '').to_dict())\nelse:\n    print('Usage: /add-adr <title> | <context> | <decision> | <consequences>')\n\""
+    },
+    "session-log": {
+      "description": "Read the last 7 days of session logs",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py session-read 7"
+    },
+    "stop": {
+      "description": "Mark end of session — where you stopped, what's next. Usage: /stop <summary>",
+      "command": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py session-stop \"$1\""
+    },
+    "laws": {
+      "description": "Show the 6 Laws of WebForge",
+      "command": "cat {{.WebForge}}/LAWS.md"
+    },
+    "areas": {
+      "description": "Show the 88 areas checklist",
+      "command": "cat {{.WebForge}}/AREAS.md"
+    },
+    "registry": {
+      "description": "Show the WebForge Agent Registry",
+      "command": "cat {{.WebForge}}/REGISTRY.md"
+    }
+  },
+  "mcp": {
+    "webforge-memory": {
+      "type": "local",
+      "command": ["python3", "{{.WebForge}}/mcp/memory.py"],
+      "enabled": true
+    },
+    "webforge-pipeline": {
+      "type": "local",
+      "command": ["python3", "{{.WebForge}}/mcp/pipeline.py"],
+      "enabled": true
+    },
+    "webforge-skill-loader": {
+      "type": "local",
+      "command": ["python3", "{{.WebForge}}/mcp/skill_loader.py"],
+      "enabled": true
+    },
+    "webforge-file-system": {
+      "type": "local",
+      "command": ["python3", "{{.WebForge}}/mcp/file_system.py"],
+      "enabled": true
+    },
+    "webforge-search": {
+      "type": "local",
+      "command": ["python3", "{{.WebForge}}/mcp/search.py"],
+      "enabled": true
+    },
+    "webforge-hr": {
+      "type": "local",
+      "command": ["python3", "{{.WebForge}}/mcp/hr.py"],
+      "enabled": true
+    },
+    "webforge-registry": {
+      "type": "local",
+      "command": ["python3", "{{.WebForge}}/mcp/registry.py"],
+      "enabled": true
+    }
+  }
+}

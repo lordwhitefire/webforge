@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+"""
+WebForge CLI — init, on, off
+
+This is the entry point for using WebForge.
+
+Usage:
+  webforge init [project-path]   # Scaffold .webforge/ in a project
+  webforge on                    # Activate WebForge for current project
+  webforge off                   # Deactivate WebForge for current project
+  webforge status                # Check if WebForge is active
+  webforge resume                # Read all memory and print "where we stopped"
+"""
+
+import os
+import sys
+import json
+import shutil
+from pathlib import Path
+from datetime import datetime, timezone
+
+WEBFORGE_HOME = Path.home() / ".webforge"
+WEBFORGE_REPO = Path(__file__).parent  # Where this script lives
+
+
+def get_project_root() -> Path:
+    """Get the project root from WEBFORGE_PROJECT env or current dir."""
+    project = os.environ.get("WEBFORGE_PROJECT")
+    if project:
+        return Path(project).expanduser().resolve()
+    return Path.cwd().resolve()
+
+
+def cmd_init(target_path: str = ".") -> int:
+    """Scaffold .webforge/ in a project."""
+    project = Path(target_path).resolve()
+    if not project.exists():
+        print(f"Error: {project} does not exist")
+        return 1
+
+    wf = project / ".webforge"
+
+    if wf.exists():
+        print(f"WebForge already initialized at {wf}")
+        return 0
+
+    # Create the structure
+    (wf / "memory").mkdir(parents=True)
+    (wf / "rules").mkdir(parents=True)
+    (wf / "logs").mkdir(parents=True)
+    (wf / "tasks").mkdir(parents=True)
+
+    # Create initial files
+    (wf / "preferences.md").write_text(
+        "# Preferences\n\nWhat the developer likes and dislikes.\n\n---\n\n"
+    )
+    # Note: ACTIVE marker is created by `webforge on`, not by init.
+    # This way init is just scaffolding, on/off is the toggle.
+    (wf / "README.md").write_text("""# WebForge — Project Memory
+
+This folder holds WebForge's memory for this project.
+
+## Structure
+
+- `memory/` — Session logs (what we did, where we stopped)
+- `rules/` — Do's and don'ts the developer has set
+- `logs/` — Audit logs (every action recorded)
+- `tasks/` — Current and past tasks
+- `preferences.md` — What the developer likes/dislikes
+- `ACTIVE` — Marker file. Present = WebForge is on. Absent = off.
+
+## How to use
+
+1. Type `/resume` at the start of a session — reads everything in here.
+2. As you work, Documentation agents append to `memory/session-YYYY-MM.md`.
+3. When you say "don't do X," it becomes a rule in `rules/`.
+4. When you say "I prefer Y," it goes in `preferences.md`.
+
+## Global memory
+
+Rules and preferences you want across ALL projects live at:
+`~/.webforge/global-rules/` and `~/.webforge/global-preferences.md`
+""")
+
+    # Create global ~/.webforge if it doesn't exist
+    if not WEBFORGE_HOME.exists():
+        WEBFORGE_HOME.mkdir(parents=True)
+        (WEBFORGE_HOME / "global-rules").mkdir()
+        (WEBFORGE_HOME / "global-preferences.md").write_text(
+            "# Global Preferences\n\nThese apply to ALL projects.\n\n---\n\n"
+        )
+
+    # Add .webforge/ to .gitignore if not already there
+    gitignore = project / ".gitignore"
+    if gitignore.exists():
+        content = gitignore.read_text()
+        if ".webforge/" not in content:
+            with gitignore.open("a") as f:
+                f.write("\n# WebForge (project memory)\n.webforge/\n")
+            print(f"Added .webforge/ to .gitignore")
+    else:
+        gitignore.write_text(".webforge/\n")
+        print(f"Created .gitignore with .webforge/")
+
+    print(f"✓ WebForge initialized at {wf}")
+    print(f"  - memory/, rules/, logs/, tasks/ folders created")
+    print(f"  - preferences.md, README.md created")
+    print(f"  - .webforge/ added to .gitignore")
+    print()
+    print("Next steps:")
+    print(f"  1. cd {project}")
+    print(f"  2. webforge on   (activate WebForge for this project)")
+    print(f"  3. /resume in OpenCode to start a session")
+    return 0
+
+
+def cmd_on() -> int:
+    """Activate WebForge for current project."""
+    project = get_project_root()
+    wf = project / ".webforge"
+
+    if not wf.exists():
+        print(f"WebForge not initialized in {project}")
+        print(f"Run: webforge init {project}")
+        return 1
+
+    active_file = wf / "ACTIVE"
+    if active_file.exists():
+        print(f"WebForge is already ON for {project}")
+    else:
+        active_file.write_text(
+            f"WebForge activated: {datetime.now(timezone.utc).isoformat()}\n"
+        )
+        # Write project-level AGENTS.md that points to global WebForge
+        agents_template = WEBFORGE_REPO / "templates" / "AGENTS.md"
+        project_agents = project / "AGENTS.md"
+
+        if agents_template.exists():
+            content = agents_template.read_text(encoding="utf-8")
+            content = content.replace(
+                "{{ACTIVATED_AT}}",
+                f"Activated: {datetime.now(timezone.utc).isoformat()}"
+            )
+            # If project already has AGENTS.md, append WebForge section instead of overwriting
+            if project_agents.exists():
+                existing = project_agents.read_text(encoding="utf-8")
+                if "# WebForge — Active in This Project" not in existing:
+                    # Append WebForge section
+                    project_agents.write_text(
+                        existing + "\n\n---\n\n" + content
+                    )
+                    print(f"  Appended WebForge section to existing AGENTS.md")
+                else:
+                    print(f"  AGENTS.md already has WebForge section")
+            else:
+                project_agents.write_text(content)
+                print(f"  Created AGENTS.md")
+        print(f"✓ WebForge turned ON for {project}")
+
+    return 0
+
+
+def cmd_off() -> int:
+    """Deactivate WebForge for current project."""
+    project = get_project_root()
+    wf = project / ".webforge"
+
+    if not wf.exists():
+        print(f"WebForge not initialized in {project}")
+        return 1
+
+    active_file = wf / "ACTIVE"
+    if active_file.exists():
+        # Write a stop entry to the session log first
+        sys.path.insert(0, str(WEBFORGE_REPO / "mcp"))
+        try:
+            from memory import session_append
+            session_append("WebForge turned OFF", agent="Developer", kind="stop")
+        except:
+            pass
+        active_file.unlink()
+
+        # Remove WebForge section from AGENTS.md (if we added it)
+        project_agents = project / "AGENTS.md"
+        if project_agents.exists():
+            content = project_agents.read_text(encoding="utf-8")
+            if "# WebForge — Active in This Project" in content:
+                # Find the section and remove it
+                marker = "\n\n---\n\n# WebForge — Active in This Project"
+                if marker in content:
+                    # We appended — remove the appended section
+                    content = content.split(marker)[0]
+                    project_agents.write_text(content)
+                    print(f"  Removed WebForge section from AGENTS.md")
+                else:
+                    # We created the file — only WebForge content
+                    project_agents.unlink()
+                    print(f"  Removed AGENTS.md (was WebForge-only)")
+
+        print(f"✓ WebForge turned OFF for {project}")
+        print(f"  Session log saved. Memory preserved.")
+        print(f"  Turn it back on with: webforge on")
+    else:
+        print(f"WebForge is already OFF for {project}")
+
+    return 0
+
+
+def cmd_status() -> int:
+    """Check WebForge status."""
+    project = get_project_root()
+    wf = project / ".webforge"
+
+    if not wf.exists():
+        print(f"WebForge NOT initialized in {project}")
+        print(f"  Run: webforge init")
+        return 1
+
+    active = (wf / "ACTIVE").exists()
+    state = "ON ✓" if active else "OFF"
+    print(f"WebForge: {state}")
+    print(f"Project: {project}")
+    print(f"Folder: {wf}")
+
+    # Show stats
+    rules = list((wf / "rules").glob("*.md"))
+    sessions = list((wf / "memory").glob("session-*.md"))
+    adrs = list((project / "docs" / "adr").glob("*.md")) if (project / "docs" / "adr").exists() else []
+
+    print(f"Rules: {len(rules)}")
+    print(f"Session logs: {len(sessions)}")
+    print(f"ADRs: {len(adrs)}")
+
+    return 0
+
+
+def cmd_resume() -> int:
+    """
+    The most important command.
+    Reads ALL memory and prints a summary so the LLM can continue where we stopped.
+    """
+    project = get_project_root()
+    wf = project / ".webforge"
+
+    if not wf.exists():
+        print(f"WebForge NOT initialized in {project}")
+        print(f"Run: webforge init first")
+        return 1
+
+    print("=" * 60)
+    print(f"WEBFORGE RESUME — {project.name}")
+    print(f"Date: {datetime.now(timezone.utc).isoformat()}")
+    print("=" * 60)
+
+    # 1. Read last session log
+    sys.path.insert(0, str(WEBFORGE_REPO / "mcp"))
+    try:
+        from memory import session_read, read_rules, read_preferences, list_adrs, get_full_context
+    except ImportError as e:
+        print(f"Error importing memory MCP: {e}")
+        return 1
+
+    print("\n## SESSION LOG (last 7 days)\n")
+    result = session_read(days=7)
+    entries = result.data.get("entries", [])
+    if entries:
+        for e in entries[-20:]:  # Last 20 entries
+            print(f"  {e}")
+    else:
+        print("  (no session log entries yet)")
+
+    # 2. Read rules
+    print("\n## RULES (do's and don'ts)\n")
+    rules_text = read_rules()
+    print(rules_text)
+
+    # 3. Read preferences
+    print("\n## PREFERENCES\n")
+    prefs_text = read_preferences()
+    print(prefs_text)
+
+    # 4. List ADRs
+    print("\n## ARCHITECTURE DECISION RECORDS\n")
+    adrs_result = list_adrs()
+    adrs = adrs_result.data.get("adrs", [])
+    if adrs:
+        for a in adrs:
+            print(f"  - {a['file']}: {a['title']}")
+    else:
+        print("  (no ADRs yet)")
+
+    # 5. Scan project structure
+    print("\n## PROJECT STRUCTURE\n")
+    package_json = project / "package.json"
+    if package_json.exists():
+        try:
+            pkg = json.loads(package_json.read_text())
+            print(f"  Name: {pkg.get('name', 'unknown')}")
+            print(f"  Scripts: {list(pkg.get('scripts', {}).keys())}")
+            deps = pkg.get("dependencies", {})
+            key_deps = ["next", "react", "typescript", "supabase", "prisma", "@sentry", "tailwindcss"]
+            print(f"  Key deps: {[d for d in deps if any(k in d.lower() for k in key_deps)]}")
+        except:
+            pass
+
+    # Count files
+    src = project / "src"
+    if src.exists():
+        tsx_count = len(list(src.rglob("*.tsx")))
+        ts_count = len(list(src.rglob("*.ts")))
+        print(f"  src/ files: {tsx_count} .tsx + {ts_count} .ts")
+
+    # 6. Last git commit
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "log", "-5", "--oneline"],
+            cwd=project, capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            print(f"\n## LAST 5 COMMITS\n")
+            for line in result.stdout.strip().split("\n"):
+                print(f"  {line}")
+    except:
+        pass
+
+    # 7. Find the last STOP entry (where we left off)
+    print("\n## WHERE WE STOPPED\n")
+    last_stops = [e for e in entries if "🛑" in e]
+    if last_stops:
+        print(f"  Last stop: {last_stops[-1]}")
+    else:
+        print("  (no explicit stop recorded — check session log for last activity)")
+
+    # 8. Pending tasks
+    tasks_dir = wf / "tasks"
+    if tasks_dir.exists():
+        pending = list(tasks_dir.glob("*.md"))
+        if pending:
+            print(f"\n## PENDING TASKS ({len(pending)})\n")
+            for t in pending[:5]:
+                print(f"  - {t.stem}")
+
+    print("\n" + "=" * 60)
+    print("RESUME COMPLETE — continue from where you stopped")
+    print("=" * 60)
+    return 0
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("WebForge CLI")
+        print()
+        print("Usage: webforge <command> [args]")
+        print()
+        print("Commands:")
+        print("  init [path]   Scaffold .webforge/ in a project (default: current dir)")
+        print("  on            Activate WebForge for current project")
+        print("  off           Deactivate WebForge for current project (saves session)")
+        print("  status        Check if WebForge is active")
+        print("  resume        Read all memory — use this at the start of every session")
+        return 1
+
+    cmd = sys.argv[1]
+    if cmd == "init":
+        target = sys.argv[2] if len(sys.argv) > 2 else "."
+        return cmd_init(target)
+    elif cmd == "on":
+        return cmd_on()
+    elif cmd == "off":
+        return cmd_off()
+    elif cmd == "status":
+        return cmd_status()
+    elif cmd == "resume":
+        return cmd_resume()
+    else:
+        print(f"Unknown command: {cmd}")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
