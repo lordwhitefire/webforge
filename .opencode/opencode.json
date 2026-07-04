@@ -111,6 +111,42 @@
     "meta-status": {
       "description": "Show what Meta Engineering has learned (rules, corrections, system memory).",
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/meta_engineering.py status"
+    },
+    "task": {
+      "description": "Create a new task in the backlog. Usage: /task <title> [type] [area] [effort]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/task.py create \"$1\" \"$2\" \"$3\" \"$4\""
+    },
+    "tasks": {
+      "description": "Show the Kanban board (Backlog, TODO, DOING, DONE, Blocked).",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/task.py board"
+    },
+    "task-show": {
+      "description": "Show details of a specific task. Usage: /task-show <task-id>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/task.py show \"$1\""
+    },
+    "task-move": {
+      "description": "Move a task to a different column. Usage: /task-move <id> <backlog|todo|doing|done|blocked>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/task.py move \"$1\" \"$2\""
+    },
+    "task-done": {
+      "description": "Mark a task as done. Usage: /task-done <id> [summary]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/task.py done \"$1\" \"$2\""
+    },
+    "task-block": {
+      "description": "Mark a task as blocked. Usage: /task-block <id> <reason>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/task.py block \"$1\" \"$2\""
+    },
+    "task-approve": {
+      "description": "Approve the proposed task and start working on it. Usage: /task-approve <id> [agent]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/task.py approve \"$1\" \"$2\""
+    },
+    "task-reject": {
+      "description": "Reject the proposed task, move back to backlog, propose next. Usage: /task-reject <id> [reason]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/task.py reject \"$1\" \"$2\""
+    },
+    "build": {
+      "description": "PROPOSAL GATE: Shows the next task to work on and waits for your approval. You are the first point of contact before any Hephaestus agent starts.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/task.py propose"
     }
   },
   "mcp": {}

@@ -82,6 +82,47 @@ The developer's projects never finish. They work on them across many sessions. I
 
 ---
 
+## 🏗️ Building — The Approval Gate
+
+**The developer is the FIRST point of contact before any Hephaestus agent works.**
+
+When the developer types `/build`:
+
+1. WebForge finds the next unblocked task (from TODO, or auto-promotes from Backlog)
+2. WebForge PROPOSES the task to the developer:
+   ```
+   PROPOSED TASK: task-007
+     Title: Add cart total calculation
+     Type: feature | Effort: M | Area: 37
+
+   Approve? Type:
+     /task-approve task-007    — start working
+     /task-reject task-007     — skip, propose next
+   ```
+3. **WAIT. Do NOT start working yet.**
+4. The developer responds:
+   - `/task-approve task-007` → agent auto-pulls, starts working
+   - `/task-reject task-007` → task goes back to backlog, next task is proposed
+   - `/task-reject task-007 do something else first` → rejected with reason
+   - Developer types a new instruction → follow that instead
+
+### Kanban Rules
+
+- **WIP Limits enforced:**
+  - TODO: max 3 tasks
+  - DOING: max 2 tasks (forces focus — finish before starting new)
+- When DOING is full, `/build` says "finish one of these first" and shows the doing tasks
+- Tasks are small (S/M/L effort) — if a task is too big, break it into sub-tasks
+- All task moves are logged to the session log
+
+### Why This Replaces the 13-Step Pipeline
+
+Real engineering teams (Google, Meta, Atlassian) don't work in fixed steps.
+They pull tasks from a board. The developer decides what to work on next.
+This matches that pattern.
+
+---
+
 ## How Memory Works
 
 WebForge remembers 4 things:
@@ -138,6 +179,17 @@ WebForge remembers 4 things:
 - `/probe-existing` — Scan existing project (no questions)
 - `/probe-fresh` — Ask questions for new project
 - `/scan` — Print complete project map
+
+### Building (Kanban — replaces rigid pipeline)
+- `/build` — **PROPOSAL GATE** — shows next task, waits for your approval
+- `/task <title> [type] [area] [effort]` — Create a task in backlog
+- `/tasks` — Show the Kanban board
+- `/task-show <id>` — Show task details
+- `/task-move <id> <column>` — Move task (backlog/todo/doing/done/blocked)
+- `/task-approve <id> [agent]` — Approve proposed task, start working
+- `/task-reject <id> [reason]` — Reject, propose next task
+- `/task-done <id> [summary]` — Mark task done
+- `/task-block <id> <reason>` — Mark task as blocked
 
 ### Reference
 - `/laws` — Show the 6 Laws
