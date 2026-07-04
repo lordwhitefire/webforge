@@ -40,23 +40,25 @@ def cmd_init(target_path: str = ".") -> int:
 
     wf = project / ".webforge"
 
-    if wf.exists():
+    already = wf.exists()
+
+    if already:
         print(f"WebForge already initialized at {wf}")
-        return 0
 
-    # Create the structure
-    (wf / "memory").mkdir(parents=True)
-    (wf / "rules").mkdir(parents=True)
-    (wf / "logs").mkdir(parents=True)
-    (wf / "tasks").mkdir(parents=True)
+    if not already:
+        # Create the structure
+        (wf / "memory").mkdir(parents=True)
+        (wf / "rules").mkdir(parents=True)
+        (wf / "logs").mkdir(parents=True)
+        (wf / "tasks").mkdir(parents=True)
 
-    # Create initial files
-    (wf / "preferences.md").write_text(
-        "# Preferences\n\nWhat the developer likes and dislikes.\n\n---\n\n"
-    )
-    # Note: ACTIVE marker is created by `webforge on`, not by init.
-    # This way init is just scaffolding, on/off is the toggle.
-    (wf / "README.md").write_text("""# WebForge — Project Memory
+        # Create initial files
+        (wf / "preferences.md").write_text(
+            "# Preferences\n\nWhat the developer likes and dislikes.\n\n---\n\n"
+        )
+        # Note: ACTIVE marker is created by `webforge on`, not by init.
+        # This way init is just scaffolding, on/off is the toggle.
+        (wf / "README.md").write_text("""# WebForge — Project Memory
 
 This folder holds WebForge's memory for this project.
 
@@ -82,25 +84,25 @@ Rules and preferences you want across ALL projects live at:
 `~/.webforge/global-rules/` and `~/.webforge/global-preferences.md`
 """)
 
-    # Create global ~/.webforge if it doesn't exist
-    if not WEBFORGE_HOME.exists():
-        WEBFORGE_HOME.mkdir(parents=True)
-        (WEBFORGE_HOME / "global-rules").mkdir()
-        (WEBFORGE_HOME / "global-preferences.md").write_text(
-            "# Global Preferences\n\nThese apply to ALL projects.\n\n---\n\n"
-        )
+        # Create global ~/.webforge if it doesn't exist
+        if not WEBFORGE_HOME.exists():
+            WEBFORGE_HOME.mkdir(parents=True)
+            (WEBFORGE_HOME / "global-rules").mkdir()
+            (WEBFORGE_HOME / "global-preferences.md").write_text(
+                "# Global Preferences\n\nThese apply to ALL projects.\n\n---\n\n"
+            )
 
-    # Add .webforge/ to .gitignore if not already there
-    gitignore = project / ".gitignore"
-    if gitignore.exists():
-        content = gitignore.read_text()
-        if ".webforge/" not in content:
-            with gitignore.open("a") as f:
-                f.write("\n# WebForge (project memory)\n.webforge/\n")
-            print(f"Added .webforge/ to .gitignore")
-    else:
-        gitignore.write_text(".webforge/\n")
-        print(f"Created .gitignore with .webforge/")
+        # Add .webforge/ to .gitignore if not already there
+        gitignore = project / ".gitignore"
+        if gitignore.exists():
+            content = gitignore.read_text()
+            if ".webforge/" not in content:
+                with gitignore.open("a") as f:
+                    f.write("\n# WebForge (project memory)\n.webforge/\n")
+                print(f"  Added .webforge/ to .gitignore")
+        else:
+            gitignore.write_text(".webforge/\n")
+            print(f"  Created .gitignore with .webforge/")
 
     # Symlink .opencode/ for OpenCode slash commands
     project_opencode = project / ".opencode"
@@ -113,6 +115,9 @@ Rules and preferences you want across ALL projects live at:
             print(f"  .opencode/ already symlinked to WebForge")
         else:
             print(f"  .opencode/ exists (not WebForge) -- skipping")
+
+    if already:
+        return 0
 
     print(f"✓ WebForge initialized at {wf}")
     print(f"  - memory/, rules/, logs/, tasks/ folders created")

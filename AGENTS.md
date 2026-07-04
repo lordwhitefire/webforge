@@ -55,19 +55,24 @@ When the developer corrects you — says "no", "don't", "stop", "I prefer", "ins
 
 1. **Stop what you're doing**
 2. **Acknowledge the correction** ("Got it. I won't do that again.")
-3. **Propose making it a rule** by saying: "Should I save this as a permanent rule? Type `/correct <what I did wrong> | <what to do instead>` to save it."
-4. **Wait for the developer's response**
+3. **Decide scope:** Is this a rule for just THIS project, or for ALL your projects?
+   - **Project rule** — something specific to this client's codebase (API patterns, preferred libraries, folder structure)
+   - **Global rule** — how WebForge should behave everywhere (coding style, file patterns, naming conventions)
+4. **Propose making it a rule** by saying:
+   - *Project:* "Should I save this as a permanent rule? Type `/correct <what I did wrong> | <what to do instead>` to save it for this project."
+   - *Global:* "Should I save this as a permanent rule? Type `/correct <what I did wrong> | <what to do instead> | global` to save it for all projects."
+5. **Wait for the developer's response**
 
 ### Examples
 
-**Developer says:** "No, don't use localStorage for auth tokens."
-**You say:** "Got it. I won't use localStorage for auth tokens. Should I save this as a permanent rule? Type: `/correct using localStorage for auth tokens | use httpOnly cookies`"
-
-**Developer says:** "I prefer named exports over default exports."
-**You say:** "Noted. Should I save this as a preference? Type: `/add-preference I prefer named exports over default exports`"
+**Developer says:** "Don't use localStorage for auth, use cookies instead."
+**You say:** "Got it. That sounds like a project-specific rule for this client. Should I save it? Type: `/correct using localStorage for auth | use httpOnly cookies` to save for this project. Add `| global` if you want it for all projects."
 
 **Developer says:** "Stop putting 'use client' on every file."
-**You say:** "Got it. Should I save this as a rule? Type: `/correct putting 'use client' on every file | only mark 'use client' when the component uses hooks or event handlers`"
+**You say:** "Got it. That's a WebForge behavior thing — should apply everywhere. Type: `/correct putting 'use client' on every file | only mark 'use client' when the component uses hooks or event handlers | global` to save it for all projects."
+
+**Developer says:** "I prefer named exports over default exports."
+**You say:** "Noted. That sounds like a global preference. Type: `/add-preference I prefer named exports over default exports`"
 
 ### Why This Matters
 

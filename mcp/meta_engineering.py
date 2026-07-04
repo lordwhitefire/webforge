@@ -140,9 +140,13 @@ def review() -> McpResult:
         print()
         print("To turn any of these into a permanent rule, use:")
         print("  /correct <what was wrong> | <what to do instead>")
+        print("    → saves for this project only")
+        print("  /correct <what was wrong> | <what to do instead> | global")
+        print("    → saves for ALL your projects (WebForge learns forever)")
         print()
-        print("Example:")
+        print("Examples:")
         print("  /correct using localStorage for auth | use httpOnly cookies")
+        print("  /correct putting 'use client' on every file | only mark when hooks or events | global")
         print()
         print("Or add a rule directly:")
         print("  /add-rule Never use localStorage for auth tokens")
@@ -154,16 +158,20 @@ def review() -> McpResult:
     total_rules = rules_result.data.get("count", 0)
     print(f"\n## CURRENT RULES: {total_rules}")
 
-    # 3. Show system-memory status
-    sys_mem = Path.home() / "webforge" / "system-memory"
-    if sys_mem.exists():
-        corrections_log = sys_mem / "corrections.md"
-        if corrections_log.exists():
-            lines = corrections_log.read_text().strip().split("\n")
-            # Count lines that start with "- **["
+    # 3. Show correction logs
+    from memory import global_corrections_file, corrections_file as project_corrections_file
+    gc = global_corrections_file()
+    pc = project_corrections_file()
+    total = 0
+    for log_file in [gc, pc]:
+        if log_file.exists():
+            lines = log_file.read_text().strip().split("\n")
             count = sum(1 for l in lines if l.startswith("- **["))
-            print(f"## CORRECTIONS LEARNED (all time): {count}")
-            print(f"   Log: {corrections_log}")
+            total += count
+            label = "GLOBAL" if log_file == gc else "PROJECT"
+            print(f"## {label} CORRECTIONS: {count}")
+            print(f"   Log: {log_file}")
+    print(f"## TOTAL CORRECTIONS: {total}")
 
     # 4. Log the review
     session_append(
@@ -213,20 +221,23 @@ def learn() -> McpResult:
 
 def status() -> McpResult:
     """Show Meta Engineering status."""
-    sys_mem = Path.home() / "webforge" / "system-memory"
-    corrections_log = sys_mem / "corrections.md" if sys_mem.exists() else None
+    from memory import global_corrections_file, corrections_file as project_corrections_file
+    gc = global_corrections_file()
+    pc = project_corrections_file()
 
     corrections_count = 0
-    if corrections_log and corrections_log.exists():
-        corrections_count = sum(1 for l in corrections_log.read_text().split("\n")
-                               if l.startswith("- **["))
+    for log_file in [gc, pc]:
+        if log_file.exists():
+            corrections_count += sum(1 for l in log_file.read_text().split("\n")
+                                     if l.startswith("- **["))
 
     rules_result = list_rules("all")
 
     return success({
         "total_rules": rules_result.data.get("count", 0),
         "corrections_learned": corrections_count,
-        "system_memory_exists": sys_mem.exists(),
+        "global_corrections": gc.exists(),
+        "project_corrections": pc.exists(),
         "auto_learn_enabled": False,
     })
 

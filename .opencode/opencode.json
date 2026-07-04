@@ -100,10 +100,10 @@
       "description": "Scan the project and print a complete map (pages, components, API routes, ADRs, tests, git info).",
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/probe.py scan"
     },
-    "correct": {
-      "description": "Turn a correction into a permanent rule. Usage: /correct <what was wrong> | <what to do instead>",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py add-correction \"$1\""
-    },
+"correct": {
+  "description": "Turn a correction into a permanent rule. Add | global to save for all projects. Usage: /correct <what was wrong> | <what to do instead> [| global]",
+  "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py add-correction \"$1\""
+},
     "review": {
       "description": "Meta Engineering review — scans session for corrections, proposes rules. Run at end of session.",
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/meta_engineering.py review"

@@ -67,6 +67,18 @@ def preferences_file() -> Path:
 def global_preferences_file() -> Path:
     return global_webforge_dir() / "global-preferences.md"
 
+def corrections_file() -> Path:
+    """Project-specific correction log."""
+    d = webforge_dir() / "meta-memory"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "corrections.md"
+
+def global_corrections_file() -> Path:
+    """Global correction log — WebForge learns across all projects."""
+    d = global_webforge_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "corrections.md"
+
 def adr_dir() -> Path:
     """ADRs live in the project's docs/adr/ (industry standard)."""
     d = get_project_root() / "docs" / "adr"
@@ -232,15 +244,15 @@ def add_correction(wrong: str, right: str, scope: str = "project") -> McpResult:
         kind="correction"
     )
 
-    # Write to system-memory (Meta Engineering's own log)
+    # Write to correction log (scope-aware)
     try:
-        sys_mem = Path.home() / "webforge" / "system-memory"
-        sys_mem.mkdir(parents=True, exist_ok=True)
-        corrections_log = sys_mem / "corrections.md"
-        if not corrections_log.exists():
-            corrections_log.write_text("# Meta Engineering — Corrections Log\n\nRules learned from developer corrections.\n\n---\n\n")
-
-        with corrections_log.open("a", encoding="utf-8") as f:
+        if scope == "global":
+            log_file = global_corrections_file()
+        else:
+            log_file = corrections_file()
+        if not log_file.exists():
+            log_file.write_text("# Meta Engineering — Corrections Log\n\nRules learned from developer corrections.\n\n---\n\n")
+        with log_file.open("a", encoding="utf-8") as f:
             f.write(f"- **[{utc_now()}]** Wrong: {wrong} → Right: {right} → Rule: {rule_text}\n")
     except:
         pass

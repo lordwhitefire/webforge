@@ -21,7 +21,7 @@ I test the whole WebForge system to find issues before they break projects.
 3. I check all skill files comply with Law 2 (under 300 lines).
 4. I check the audit log is being written.
 5. I check memory is following the 300-line rule.
-6. I write a test report to `~/webforge/system-memory/test-reports/`.
+6. I write a test report to `~/.webforge/test-reports/`.
 7. I tell Daedalus what passed and what failed.
 
 ## What I Do NOT Do
