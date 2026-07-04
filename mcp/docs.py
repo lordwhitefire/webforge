@@ -55,7 +55,8 @@ def read_package_json() -> dict:
         return {}
     try:
         return json.loads(pkg_path.read_text())
-    except:
+    except Exception as _e:
+        write_log("Docs", "Thoth", "parse package.json", {"error": str(_e)})
         return {}
 
 
@@ -79,7 +80,8 @@ def get_git_log(limit: int = 20) -> list:
                     "date": parts[3],
                 })
         return logs
-    except:
+    except Exception as _e:
+        write_log("Docs", "Thoth", "get git log", {"error": str(_e)})
         return []
 
 
@@ -532,7 +534,8 @@ def onboard_generate() -> McpResult:
             tasks_summary += "\n### Up Next\n"
             for t in todo:
                 tasks_summary += f"- {t['id']}: {t['title']}\n"
-    except:
+    except Exception as _e:
+        write_log("Docs", "Thoth", "load task board", {"error": str(_e)})
         tasks_summary = "(Task board not available)"
 
     content = f"""# {name} — Developer Onboarding

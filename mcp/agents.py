@@ -18,6 +18,7 @@ via bash instead of just explaining how it should be done.
 import os
 import sys
 import json
+import subprocess
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -325,11 +326,14 @@ if __name__ == "__main__":
         agent_name = sys.argv[2] if len(sys.argv) > 2 else ""
         message = sys.argv[3] if len(sys.argv) > 3 else ""
         if agent_name and message:
-            result = talk_to(agent_name, message)
-            print(result.data.get("display", result.to_dict()))
-            print()
-            print("--- LLM INSTRUCTION ---")
-            print(result.data.get("instruction", ""))
+            # Redirect to pipeline — the hook system
+            print(f"  ▶️  Routing @{agent_name} through pipeline...")
+            sys.stdout.flush()
+            pipeline_script = Path(__file__).parent / "pipeline.py"
+            cmd_list = [sys.executable, str(pipeline_script), "trigger", agent_name, message]
+            env = os.environ.copy()
+            env["WEBFORGE_PROJECT"] = os.environ.get("WEBFORGE_PROJECT", str(Path.cwd()))
+            subprocess.run(cmd_list, env=env)
         else:
             print("Usage: talk <agent-name> <message>")
     else:

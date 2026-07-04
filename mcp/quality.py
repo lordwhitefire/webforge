@@ -53,7 +53,8 @@ def detect_project_type(project_root: Path) -> dict:
 
     try:
         pkg = json.loads(pkg_path.read_text())
-    except:
+    except Exception as _e:
+        write_log("Quality", "Minos", "parse package.json", {"error": str(_e)})
         return {"type": "unknown", "tools": {}}
 
     deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
@@ -290,6 +291,19 @@ def check_approve(task_id: str, reason: str = "") -> McpResult:
     Developer overrides failed checks.
     'I know about the warning, mark it done anyway.'
     """
+    # Pipeline gate — refuse if pipeline is active
+    try:
+        from common import is_pipeline_active
+        if is_pipeline_active():
+            return fail(
+                f"PIPELINE ACTIVE — {task_id}\n\n"
+                f"A pipeline session is running. Let the agent script handle this.\n"
+                f"Do NOT approve quality gates yourself.\n"
+                f"Wait for the pipeline to finish, or say 'continue' if it timed out."
+            )
+    except ImportError:
+        pass
+
     session_append(
         f"CHECK OVERRIDE — {task_id}: {reason or 'Developer approved despite check failures'}",
         agent="Developer", kind="decision"

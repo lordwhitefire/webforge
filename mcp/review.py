@@ -47,7 +47,8 @@ def review_generate(task_id: str) -> McpResult:
         task = find_task(board, task_id)
         if not task:
             return fail(f"Task not found: {task_id}")
-    except:
+    except Exception as _e:
+        write_log("Review", "Minos", "load task board", {"error": str(_e)})
         return fail("Task MCP not available")
 
     # Check git diff (what changed)
@@ -67,8 +68,8 @@ def review_generate(task_id: str) -> McpResult:
                     for p in parts:
                         if p.isdigit():
                             diff_lines += int(p)
-    except:
-        pass
+    except Exception as _e:
+        write_log("Review", "Minos", "get git diff stat", {"error": str(_e)})
 
     # Check if there are tests for this task
     test_files = []
@@ -82,8 +83,8 @@ def review_generate(task_id: str) -> McpResult:
             for f in result.stdout.strip().split("\n"):
                 if "test" in f.lower() or "spec" in f.lower():
                     test_files.append(f)
-    except:
-        pass
+    except Exception as _e:
+        write_log("Review", "Minos", "get changed files", {"error": str(_e)})
 
     # Load rules
     rules_text = read_rules()
@@ -97,8 +98,8 @@ def review_generate(task_id: str) -> McpResult:
                 rfc_status = "✓ RFC approved"
             else:
                 rfc_status = "⚠ RFC exists but NOT approved"
-    except:
-        pass
+    except Exception as _e:
+        write_log("Review", "Minos", "check RFC status", {"error": str(_e)})
 
     # Generate checklist
     lines = []

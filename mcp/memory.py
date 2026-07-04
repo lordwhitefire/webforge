@@ -156,7 +156,8 @@ def session_read(days: int = 7) -> McpResult:
                     ts = datetime.fromisoformat(ts_match).timestamp()
                     if ts >= cutoff:
                         entries.append(line)
-                except:
+                except Exception as _e:
+                    write_log("Memory", "Quill", "parse timestamp", {"error": str(_e)})
                     entries.append(line)
 
     return success({"entries": entries, "count": len(entries)})
@@ -254,8 +255,8 @@ def add_correction(wrong: str, right: str, scope: str = "project") -> McpResult:
             log_file.write_text("# Meta Engineering — Corrections Log\n\nRules learned from developer corrections.\n\n---\n\n")
         with log_file.open("a", encoding="utf-8") as f:
             f.write(f"- **[{utc_now()}]** Wrong: {wrong} → Right: {right} → Rule: {rule_text}\n")
-    except:
-        pass
+    except Exception as _e:
+        write_log("Memory", "Quill", "write correction log", {"error": str(_e)})
 
     return success({
         "rule": rule_text,

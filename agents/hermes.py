@@ -3,13 +3,13 @@
 Hermes Agent — COO / Coordinator
 
 THE BODY: This script IS Hermes. It controls what the AI does.
-THE BRAIN: The AI only reasons when Hermes asks it to.
+THE BRAIN: OpenCode (the AI) only reasons when Hermes asks it to via ask_ai().
 
 Hermes's job (enforced by code):
   1. Listen to the developer
-  2. Create tasks in the Kanban board
-  3. Route tasks to the right department
-  4. Send notifications
+  2. Ask OpenCode to classify the request
+  3. Create tasks in the Kanban board
+  4. Route tasks to the right department via _call_agent()
   5. Run standups
   6. Escalate decisions to the developer
 
@@ -21,7 +21,6 @@ Hermes does NOT (enforced by code):
   - Generate docs (that's Thoth)
 
 If the AI suggests doing any of these → Hermes REFUSES.
-The script takes only the task creation and routing parts.
 """
 
 import sys
@@ -29,7 +28,6 @@ import os
 import json
 from pathlib import Path
 
-# Set up paths
 WEBFORGE_HOME = Path.home() / "webforge"
 sys.path.insert(0, str(WEBFORGE_HOME / "agents"))
 sys.path.insert(0, str(WEBFORGE_HOME / "mcp"))
@@ -50,17 +48,15 @@ class Hermes(Agent):
     reports_to = "CEO (Developer)"
     can_route_to = ["Hephaestus", "Athena", "Minos", "Thoth", "Daedalus", "Voss"]
 
-    # What Hermes CAN do (code-enforced)
     allowed_actions = [
         "create_bugfix_task",
         "create_feature_task",
         "run_standup",
         "answer_question",
         "route",
-        "respond",  # Allow general responses
+        "respond",
     ]
 
-    # What Hermes CANNOT do (code-enforced — AI is REFUSED)
     forbidden_actions = [
         "write_code",
         "research",
@@ -70,53 +66,142 @@ class Hermes(Agent):
         "learn",
     ]
 
-    # Per-agent correction rules (Daedalus adds rules here)
     correction_rules = [
         ("rule_console", lambda msg: "console".lower() not in msg.lower(),
          "Block pattern: console"),
-
         ("rule_localstorage", lambda msg: "localstorage".lower() not in msg.lower(),
          "Block pattern: localstorage"),
     ]
 
     def execute(self, action: str, data: dict, context: dict) -> dict:
-        """Execute the action. This is CODE, not AI."""
+        """Execute the action. CODE calls AI only when needed."""
 
-        # ── Create a bugfix task ──
         if action == "create_bugfix_task":
-            return self._handle_bug(data)
+            return self._handle_bug(data, context)
 
-        # ── Create a feature task ──
         elif action == "create_feature_task":
-            return self._handle_feature(data)
+            return self._handle_feature(data, context)
 
-        # ── Run standup ──
         elif action == "run_standup":
             return self._handle_standup()
 
-        # ── Answer a question ──
         elif action == "answer_question":
             return self._handle_question(data)
 
-        # ── Route to another agent ──
         elif action == "route":
-            return self._route_to(data.get("target", ""), data.get("message", ""))
+            target = data.get("target", "")
+            msg = data.get("message", data.get("raw", ""))
+            return self._call_agent(target, msg)
 
-        # ── Anything else ──
+        # Unknown action — ask AI to classify
+        raw_message = data.get("raw", data.get("message", ""))
+        ai_response = self.ask_ai(
+            f"The user said: '{raw_message}'\n\n"
+            f"Classify this request. What does the user want to do?\n"
+            f"Options:\n"
+            f"1. create_task — a new feature or bug\n"
+            f"2. close_task — mark a task as done\n"
+            f"3. research — investigate something\n"
+            f"4. question — asking something\n"
+            f"5. route — send to another agent\n"
+            f"6. status — check progress\n\n"
+            f"If close_task, extract the task ID (e.g. task-002).\n\n"
+            f"Respond with:\n"
+            f"STATUS: ready or needs_clarification\n"
+            f"ACTION: create_task | close_task | research | question | route | status\n"
+            f"TASK_ID: task ID if close_task or create_task\n"
+            f"TARGET: department or agent name if routing\n"
+            f"MESSAGE: brief explanation"
+        )
+
+        if ai_response.get("status") == "error":
+            return {
+                "agent": self.name,
+                "action": "respond",
+                "message": f"I'm Hermes. The AI is not available right now: {ai_response.get('message', 'unknown error')}. Please try again.",
+                "next_step": None,
+            }
+
+        action_from_ai = ai_response.get("action", "")
+
+        if action_from_ai == "close_task":
+            task_id = ai_response.get("task_id", "")
+            if task_id:
+                try:
+                    from task import task_done
+                    result = task_done(task_id, ai_response.get("message", "Closed"))
+                    return {
+                        "agent": self.name,
+                        "action": "close_task",
+                        "task_id": task_id,
+                        "message": f"Closed {task_id}. {ai_response.get('message', '')}",
+                        "next_step": None,
+                    }
+                except Exception as e:
+                    return {
+                        "agent": self.name,
+                        "action": "close_task",
+                        "message": f"Failed to close {task_id}: {e}",
+                        "next_step": None,
+                    }
+            return {
+                "agent": self.name,
+                "action": "close_task",
+                "message": f"Which task should I close?",
+                "next_step": None,
+            }
+
+        if action_from_ai == "create_task" and "bug" in raw_message.lower():
+            return self._handle_bug(data, context)
+        if action_from_ai == "create_task":
+            return self._handle_feature(data, context)
+        if action_from_ai == "research":
+            return self._call_agent("Athena", raw_message)
+        if action_from_ai == "question":
+            return self._handle_question(data)
+        if action_from_ai == "status":
+            return self._handle_standup()
+        if action_from_ai == "route":
+            target = ai_response.get("target", "")
+            if target in self.can_route_to:
+                return self._call_agent(target, raw_message)
+
         return {
             "agent": self.name,
-            "action": action,
-            "message": f"I am Hermes. I received your message but I'm not sure what to do with it. "
-                       f"Try: report a bug, request a feature, ask for status, or ask a question.",
+            "action": "respond",
+            "message": ai_response.get("message", f"Hermes here. I received: {raw_message}"),
             "next_step": None,
         }
 
     # ── Handle bug report ──
-    def _handle_bug(self, data: dict) -> dict:
-        """Create a bugfix task and route to Hephaestus. CODE, not AI."""
+
+    def _handle_bug(self, data: dict, context: dict) -> dict:
+        """Handle a bug report. Ask AI to classify, then create task and route."""
         title = data.get("title", data.get("message", "Unknown bug"))
 
-        # Create the task (code)
+        # Ask AI to classify the bug
+        ai_response = self.ask_ai(
+            f"Classify this bug report and determine the department to route it to.\n"
+            f"Bug: {title}\n\n"
+            f"Respond with:\n"
+            f"STATUS: ready or needs_clarification\n"
+            f"ACTION: create_bugfix_task\n"
+            f"TARGET: department head (Hephaestus for build, Athena for research, etc)\n"
+            f"MESSAGE: brief explanation"
+        )
+
+        if ai_response.get("status") == "error":
+            return {
+                "agent": self.name,
+                "action": "create_bugfix_task",
+                "message": f"I'm Hermes. The AI is not available right now: {ai_response.get('message', 'unknown error')}. I've saved your bug report. Say 'continue' to retry.",
+                "next_step": "continue",
+            }
+
+        target = ai_response.get("target", "Hephaestus")
+        explanation = ai_response.get("message", "")
+
+        # Create the task
         task_result = self._create_task(
             title=f"[BUG] {title}",
             task_type="bugfix",
@@ -133,30 +218,64 @@ class Hermes(Agent):
 
         task_id = task_result.get("id", "unknown")
 
-        # Route to Hephaestus (code)
-        routing = self._route_to("Hephaestus", f"Bug fix needed: {title}", task_id)
+        # Route to the department head DIRECTLY
+        if target in self.can_route_to:
+            agent_result = self._call_agent(target, f"Bug fix needed: {title}", {"task_id": task_id})
+            return {
+                "agent": self.name,
+                "action": "create_bugfix_task",
+                "task_id": task_id,
+                "routed_to": target,
+                "message": (
+                    f"Got it. I've created {task_id} (bugfix) and routed it to @{target}.\n"
+                    f"  Bug: {title}\n"
+                    f"I will NOT fix this myself — that's @{target}'s job."
+                ),
+                "next_step": None,
+                "agent_result": agent_result,
+            }
 
         return {
             "agent": self.name,
             "action": "create_bugfix_task",
             "task_id": task_id,
-            "routed_to": "Hephaestus",
-            "message": (
-                f"Got it. I've created {task_id} (bugfix) and routed it to @Hephaestus.\n"
-                f"  Bug: {title}\n"
-                f"\n"
-                f"To start: /build\n"
-                f"I will NOT fix this myself — that's @Hephaestus's job."
-            ),
-            "next_step": "/build",
+            "message": f"Created {task_id} (bugfix). Could not route to {target}.",
+            "next_step": None,
         }
 
     # ── Handle feature request ──
-    def _handle_feature(self, data: dict) -> dict:
-        """Create a feature task and route to Hephaestus. CODE, not AI."""
+
+    def _handle_feature(self, data: dict, context: dict) -> dict:
+        """Handle a feature request. Ask AI to classify, create task, route."""
         title = data.get("title", data.get("message", "Unknown feature"))
 
-        # Create the task (code)
+        # Ask AI to classify the feature
+        ai_response = self.ask_ai(
+            f"Classify this feature request and determine the department to route it to.\n"
+            f"Feature: {title}\n\n"
+            f"Also determine if this needs an RFC (one-way door decisions like new architecture, "
+            f"new database, breaking API changes).\n\n"
+            f"Respond with:\n"
+            f"STATUS: ready or needs_clarification\n"
+            f"ACTION: create_feature_task\n"
+            f"TARGET: department head\n"
+            f"NEEDS_RFC: yes or no\n"
+            f"MESSAGE: brief explanation"
+        )
+
+        if ai_response.get("status") == "error":
+            return {
+                "agent": self.name,
+                "action": "create_feature_task",
+                "message": f"I'm Hermes. The AI is not available right now: {ai_response.get('message', 'unknown error')}. I've saved your request. Say 'continue' to retry.",
+                "next_step": "continue",
+            }
+
+        target = ai_response.get("target", "Hephaestus")
+        needs_rfc = ai_response.get("needs_rfc", "no")
+        explanation = ai_response.get("message", "")
+
+        # Create the task
         task_result = self._create_task(
             title=title,
             task_type="feature",
@@ -172,33 +291,36 @@ class Hermes(Agent):
             }
 
         task_id = task_result.get("id", "unknown")
+        rfc_note = "\n  ⚠️ RFC needed for this feature." if needs_rfc == "yes" else ""
 
-        # Route to Hephaestus (code)
-        routing = self._route_to("Hephaestus", f"Feature needed: {title}", task_id)
-
-        # Check if RFC will be needed (one-way door)
-        rfc_note = ""
-        if task_result.get("task", {}).get("type") == "feature":
-            rfc_note = "\n  ⚠️ This is a feature (one-way door). An RFC will be generated when you approve."
+        # Route to the department head DIRECTLY
+        if target in self.can_route_to:
+            agent_result = self._call_agent(target, f"Feature needed: {title}", {"task_id": task_id, "needs_rfc": needs_rfc})
+            return {
+                "agent": self.name,
+                "action": "create_feature_task",
+                "task_id": task_id,
+                "routed_to": target,
+                "message": (
+                    f"Great idea. I've created {task_id} (feature) and routed it to @{target}.{rfc_note}\n"
+                    f"I will NOT build this myself — that's @{target}'s job."
+                ),
+                "next_step": None,
+                "agent_result": agent_result,
+            }
 
         return {
             "agent": self.name,
             "action": "create_feature_task",
             "task_id": task_id,
-            "routed_to": "Hephaestus",
-            "message": (
-                f"Great idea. I've created {task_id} (feature) and routed it to @Hephaestus."
-                f"{rfc_note}\n"
-                f"\n"
-                f"To start: /build\n"
-                f"I will NOT build this myself — that's @Hephaestus's job."
-            ),
-            "next_step": "/build",
+            "message": f"Created {task_id} (feature). Could not route to {target}.",
+            "next_step": None,
         }
 
-    # ── Handle standup request ──
+    # ── Handle standup ──
+
     def _handle_standup(self) -> dict:
-        """Run the standup. CODE, not AI."""
+        """Run the standup. Calls standup MCP directly."""
         try:
             from standup import standup_run
             result = standup_run()
@@ -217,55 +339,170 @@ class Hermes(Agent):
             }
 
     # ── Handle question ──
+
     def _handle_question(self, data: dict) -> dict:
         """
-        Answer a question. If it needs a decision → escalate.
-        If it needs research → route to Athena.
-        CODE decides which, not AI.
+        Handle a question. Ask AI to determine what to do with it.
         """
-        question = data.get("question", "")
+        question = data.get("question", data.get("message", ""))
 
-        # Check if this needs a developer decision
-        decision_keywords = ["should", "which", "do you prefer", "shall we", "can we"]
-        needs_decision = any(kw in question.lower() for kw in decision_keywords)
+        ai_response = self.ask_ai(
+            f"A user asked me (Hermes, the COO) this question:\n"
+            f"{question}\n\n"
+            f"Determine what to do with this question:\n"
+            f"1. Does it need a decision from the CEO? (keywords: should, which, do you prefer)\n"
+            f"2. Does it need research? (keywords: what's the best, how does, research)\n"
+            f"3. Can I answer it directly?\n\n"
+            f"Respond with:\n"
+            f"STATUS: ready or needs_clarification\n"
+            f"ACTION: escalate_to_ceo | route_to_athena | answer_directly\n"
+            f"TARGET: CEO or Athena or none\n"
+            f"MESSAGE: your answer or explanation"
+        )
 
-        if needs_decision:
-            # Escalate to developer (code)
-            try:
-                from escalate import escalate_ask
-                result = escalate_ask(question, context="Hermes detected this needs your decision")
-                return {
-                    "agent": self.name,
-                    "action": "escalate",
-                    "message": result.data.get("message", "Escalated to developer."),
-                    "next_step": f"/answer <id> <your answer>",
-                }
-            except:
-                pass
+        if ai_response.get("status") == "error":
+            return {
+                "agent": self.name,
+                "action": "answer_question",
+                "message": f"I'm Hermes. The AI is not available right now: {ai_response.get('message', 'unknown error')}. Please try again later or use /escalate.",
+                "next_step": None,
+            }
 
-        # Check if this needs research
-        research_keywords = ["what's the best", "how does", "what are the standards", "research"]
-        needs_research = any(kw in question.lower() for kw in research_keywords)
+        action_taken = ai_response.get("action", "answer_directly")
 
-        if needs_research:
-            return self._route_to("Athena", f"Research needed: {question}")
+        if action_taken == "escalate_to_ceo":
+            # Show the question to the developer
+            return {
+                "agent": self.name,
+                "action": "escalate",
+                "message": (
+                    f"🙋 I need your input on this question:\n"
+                    f"  {question}\n\n"
+                    f"Please answer so I can proceed."
+                ),
+                "next_step": None,
+            }
 
-        # Otherwise, give a general answer
+        elif action_taken == "route_to_athena":
+            agent_result = self._call_agent("Athena", f"Research needed: {question}")
+            return {
+                "agent": self.name,
+                "action": "answer_question",
+                "message": f"I've routed your question to @Athena for research.",
+                "next_step": None,
+                "agent_result": agent_result,
+            }
+
+        # answer_directly
         return {
             "agent": self.name,
             "action": "answer_question",
-            "message": (
-                f"I'm Hermes (COO). I coordinate work — I don't have deep technical knowledge.\n"
-                f"Your question: {question}\n\n"
-                f"If this is a decision for you: /escalate \"{question}\"\n"
-                f"If this needs research: /talk Athena \"{question}\"\n"
-                f"If this is about a task: /build or /tasks"
-            ),
+            "message": ai_response.get("message", f"I'm Hermes. I coordinate work. Your question: {question}"),
             "next_step": None,
         }
 
+    # ── AI Resume Handler ──
+
+    def _handle_ai_response(self, response: dict, context: dict) -> dict:
+        """
+        Called when the pipeline resumes after AI responded to ask_ai().
+        Takes the AI's decision and actually executes it (route, escalate, etc).
+        """
+        action = response.get("action", "")
+        target = response.get("target", "")
+        message = response.get("message", "")
+
+        # Route to Athena for research
+        if action == "route_to_athena" or target == "Athena":
+            agent_result = self._call_agent("Athena", message)
+            return {
+                "agent": self.name,
+                "action": "route_to_athena",
+                "message": f"Routed to @Athena. {message}",
+                "next_step": None,
+                "agent_result": agent_result,
+            }
+
+        # Escalate to CEO (user)
+        if action == "escalate_to_ceo" or target == "CEO":
+            return {
+                "agent": self.name,
+                "action": "escalate",
+                "message": f"🙋 Need your input:\n{message}",
+                "next_step": None,
+            }
+
+        # Create and route a feature task
+        if action == "create_feature_task":
+            task_result = self._create_task(message, "feature", "M")
+            if "error" in task_result:
+                return {"agent": self.name, "action": "create_feature_task",
+                        "message": f"Failed to create task: {task_result['error']}", "next_step": None}
+            task_id = task_result.get("id", "unknown")
+            route_target = target if target in self.can_route_to else "Hephaestus"
+            if route_target in self.can_route_to:
+                agent_result = self._call_agent(route_target, message, {"task_id": task_id})
+                return {
+                    "agent": self.name, "action": "create_feature_task",
+                    "task_id": task_id, "routed_to": route_target,
+                    "message": f"Created {task_id} (feature) and routed to @{route_target}.",
+                    "next_step": None, "agent_result": agent_result,
+                }
+            return {"agent": self.name, "action": "create_feature_task",
+                    "task_id": task_id, "message": f"Created {task_id}.", "next_step": None}
+
+        # Create and route a bugfix task
+        if action == "create_bugfix_task":
+            task_result = self._create_task(f"[BUG] {message}", "bugfix", "S")
+            if "error" in task_result:
+                return {"agent": self.name, "action": "create_bugfix_task",
+                        "message": f"Failed to create task: {task_result['error']}", "next_step": None}
+            task_id = task_result.get("id", "unknown")
+            route_target = target if target in self.can_route_to else "Hephaestus"
+            if route_target in self.can_route_to:
+                agent_result = self._call_agent(route_target, f"Bug: {message}", {"task_id": task_id})
+                return {
+                    "agent": self.name, "action": "create_bugfix_task",
+                    "task_id": task_id, "routed_to": route_target,
+                    "message": f"Created {task_id} (bugfix) and routed to @{route_target}.",
+                    "next_step": None, "agent_result": agent_result,
+                }
+            return {"agent": self.name, "action": "create_bugfix_task",
+                    "task_id": task_id, "message": f"Created {task_id}.", "next_step": None}
+
+        # Default: just respond with the AI's message
+        return {
+            "agent": self.name,
+            "action": "respond",
+            "message": message or "Done.",
+            "next_step": None,
+        }
+
+    # ── Refusal → Route ──
+
+    def run(self, message: str, context: dict = None) -> dict:
+        """Override: save original message before processing, so _refuse can route with it."""
+        self._last_message = message
+        return super().run(message, context)
+
+    def _refuse(self, reason: str) -> dict:
+        """
+        Override: instead of just refusing, route to the right agent.
+        Hermes is the COO — it routes work, it doesn't tell the user to do it.
+        """
+        import re
+        match = re.search(r'@(\w[\w-]+)', reason)
+        if match:
+            target = match.group(1)
+            target_lower = target.lower()
+            can_route_lower = [a.lower() for a in self.can_route_to]
+            if target_lower in can_route_lower:
+                return self._call_agent(target, getattr(self, '_last_message', reason))
+        return super()._refuse(reason)
+
 
 # ── Entry point ──
+
 def run(message: str, context: dict = None) -> dict:
     """Called when developer talks to Hermes. This IS Hermes."""
     hermes = Hermes()
@@ -286,6 +523,3 @@ if __name__ == "__main__":
     message = " ".join(sys.argv[1:])
     result = run(message)
     print(result.get("message", json.dumps(result, indent=2)))
-
-    if result.get("next_step"):
-        print(f"\n→ Next: {result['next_step']}")

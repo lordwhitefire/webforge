@@ -132,6 +132,27 @@ def make_id(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()[:8]
 
 
+def is_pipeline_active() -> bool:
+    """
+    Check if any pipeline session is currently running.
+    If true, MCP commands should refuse — let the script handle it.
+    """
+    for lock_file in Path("/tmp").glob("wf-sess-*/pipeline.lock"):
+        try:
+            data = json.loads(lock_file.read_text())
+            if data.get("status") == "running":
+                return True
+        except Exception:
+            pass
+    # Also check env var
+    session_id = os.environ.get("WF_SESSION_ID")
+    if session_id:
+        lock = Path(f"/tmp/wf-sess-{session_id}/pipeline.lock")
+        if lock.exists():
+            return True
+    return False
+
+
 class McpResult:
     """Standard result envelope returned by every MCP."""
     def __init__(self, ok: bool, data: dict = None, error: str = ""):

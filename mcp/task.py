@@ -119,15 +119,21 @@ def task_create(title: str, task_type: str = "feature", area: str = "",
     try:
         from notify import notify_task_created
         notify_task_created(task_id, title, task_type, from_agent="Developer")
-    except:
+    except ImportError:
         pass  # Notify module not available, skip
+    except Exception as e:
+        write_log("Task", "Hephaestus", "notify_failed",
+                  {"task_id": task_id, "error": str(e)})
 
     # ── AUTO-DISPATCH (route to the right department head) ──
     try:
         from dispatch import auto_dispatch
         auto_dispatch(task_id, task_type, title, from_agent="Developer")
-    except:
+    except ImportError:
         pass  # Dispatch module not available, skip
+    except Exception as e:
+        write_log("Task", "Hephaestus", "auto_dispatch_failed",
+                  {"task_id": task_id, "error": str(e)})
 
     return success({"task": task, "id": task_id})
 
@@ -228,12 +234,26 @@ def task_move(task_id: str, new_status: str) -> McpResult:
 
 
 # ── Pick task (assign owner + move to doing) ──
-def task_pick(task_id: str, agent: str) -> McpResult:
-    """An agent picks up a task — assigns ownership and moves to DOING."""
+def task_pick(task_id: str, agent: str, bypass_gate: bool = False) -> McpResult:
+    """
+    An agent picks up a task — assigns ownership and moves to DOING.
+    
+    Approval gate: if task is in 'backlog' and bypass_gate is False, refuse.
+    The AI must call task_approve() first. Use bypass_gate=True only for 
+    internal routing (dispatch.py) and task_approve().
+    """
     board = load_board()
     task = find_task(board, task_id)
     if not task:
         return fail(f"Task not found: {task_id}")
+
+    # Approval gate — backlog tasks must go through task_approve()
+    if task["status"] == "backlog" and not bypass_gate:
+        return fail(
+            f"APPROVAL GATE — {task_id} is in backlog.\n"
+            f"Propose it first: /task-propose\n"
+            f"Then approve: /task-approve {task_id}"
+        )
 
     # Check WIP for doing
     doing_count = sum(1 for t in board["tasks"] if t["status"] == "doing")
@@ -257,8 +277,11 @@ def task_pick(task_id: str, agent: str) -> McpResult:
     try:
         from notify import notify_task_assigned
         notify_task_assigned(task_id, task["title"], agent, from_agent="Hermes")
-    except:
-        pass
+    except ImportError:
+        pass  # Notify module not available
+    except Exception as e:
+        write_log("Task", agent, "notify_failed",
+                  {"task_id": task_id, "error": str(e)})
 
     return success({"task": task, "picked_by": agent})
 
@@ -272,6 +295,16 @@ def task_done(task_id: str, summary: str = "") -> McpResult:
     If checks failed and no override given → BLOCKS (strict by default).
     Developer can override with /check-approve.
     """
+    # Pipeline gate — refuse if pipeline is active
+    from common import is_pipeline_active
+    if is_pipeline_active():
+        return fail(
+            f"PIPELINE ACTIVE — task-{task_id}\n\n"
+            f"A pipeline session is running. Let the agent script handle this.\n"
+            f"Do NOT close tasks or override quality gates yourself.\n"
+            f"Wait for the pipeline to finish, or say 'continue' if it timed out."
+        )
+
     board = load_board()
     task = find_task(board, task_id)
     if not task:
@@ -307,8 +340,11 @@ def task_done(task_id: str, summary: str = "") -> McpResult:
         from notify import notify_task_done
         done_by = task.get("owner") or "Hephaestus"
         notify_task_done(task_id, task["title"], done_by, from_agent=done_by)
-    except:
-        pass
+    except ImportError:
+        pass  # Notify module not available
+    except Exception as e:
+        write_log("Task", done_by, "notify_failed",
+                  {"task_id": task_id, "error": str(e)})
 
     return success({"task": task})
 
@@ -329,8 +365,11 @@ def task_block(task_id: str, reason: str) -> McpResult:
     try:
         from notify import notify_task_blocked
         notify_task_blocked(task_id, task["title"], reason, from_agent="Hephaestus")
-    except:
-        pass
+    except ImportError:
+        pass  # Notify module not available
+    except Exception as e:
+        write_log("Task", "Hephaestus", "notify_failed",
+                  {"task_id": task_id, "error": str(e)})
 
     return success({"task": task})
 
@@ -374,23 +413,24 @@ def propose_next() -> McpResult:
                                  for t in doing_tasks),
         })
 
-    # Find next TODO task (unblocked)
+    # Find next unblocked task — FIRST from TODO (already prioritized), THEN from backlog
     todo_tasks = [t for t in board["tasks"] if t["status"] == "todo"]
+    backlog_tasks = [t for t in board["tasks"] if t["status"] == "backlog"]
+    
     if todo_tasks:
         proposed = todo_tasks[0]
-    else:
-        # Auto-promote from backlog
-        backlog_tasks = [t for t in board["tasks"] if t["status"] == "backlog"]
-        if not backlog_tasks:
-            return success({
-                "proposed": None,
-                "reason": "no tasks",
-                "message": "No tasks in backlog or TODO. Create one with: /task <title>",
-            })
+    elif backlog_tasks:
         proposed = backlog_tasks[0]
-        # Auto-promote to TODO
-        proposed["status"] = "todo"
-        save_board(board)
+    else:
+        return success({
+            "proposed": None,
+            "reason": "no tasks",
+            "message": "No tasks in backlog or TODO. Create one with: /task <title>",
+        })
+
+    # NOTE: We do NOT promote the task here. It stays in backlog/todo.
+    # The AI MUST call /task-approve to start.
+    # Prompts describe, code enforces: the approval gate is real.
 
     return success({
         "proposed": proposed,
@@ -399,9 +439,10 @@ def propose_next() -> McpResult:
             f"  Title: {proposed['title']}\n"
             f"  Type: {proposed['type']} | Effort: {proposed['effort']} | Area: {proposed.get('area', 'n/a')}\n"
             f"  Description: {proposed.get('description', '(none)')}\n\n"
-            f"Approve this task? Type:\n"
-            f"  /task-approve {proposed['id']}            — start working on it\n"
+            f"⚠️ Task is NOT approved yet. To start:\n"
+            f"  /task-approve {proposed['id']}            — approve and start\n"
             f"  /task-reject {proposed['id']} <reason>    — skip and propose next\n"
+            f"  /task-pick {proposed['id']} <agent>       — REFUSED (use /task-approve)\n"
             f"  /tasks                                  — see full board"
         ),
     })
@@ -426,8 +467,8 @@ def task_approve(task_id: str, agent: str = "auto") -> McpResult:
     else:
         owner = agent
 
-    # Pick the task (assigns owner, moves to DOING)
-    result = task_pick(task_id, owner)
+    # Pick the task (assigns owner, moves to DOING) — approval already happened
+    result = task_pick(task_id, owner, bypass_gate=True)
     if not result.ok:
         return result
 

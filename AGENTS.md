@@ -132,17 +132,20 @@ Not every task needs a design document. WebForge uses Amazon's "two-way door" ru
   - Task types: `bugfix`, `test`, `docs`
   - Effort: `S`, `M`
 
-**How it works:**
+**How it works (you just talk, the AI does the work):**
 
-1. `/task-approve task-001` — you approve the task
-2. If it's a one-way door → WebForge **auto-generates an RFC**
-3. The RFC includes: summary, motivation, design, alternatives, risks, rules, ADRs
-4. WebForge says: "⚠️ RFC REQUIRED. Review: /rfc task-001"
-5. **Coding is BLOCKED until you approve the RFC**
-6. `/rfc task-001` — you review the design
-7. `/rfc-approve task-001` — unlock coding
-   OR
-   `/rfc-reject task-001 "use server-side instead"` — send back
+1. You tell Hermes what you need → he creates a task **internally**
+2. Auto-dispatch routes it to the right department automatically
+3. Hermes shows you the plan and asks if you want to proceed
+4. You say yes → Hermes **internally** calls `task_approve()`
+5. If it's a one-way door → Hermes **auto-generates an RFC** by scanning your actual codebase
+6. Hermes shows you the RFC content (real files, real deps, real risks)
+7. You approve or reject — Hermes **internally** calls `rfc_approve()` or `rfc_reject()`
+8. Approved → Hermes **internally** calls `executor.run()` → full chain executes
+9. Results come back up through the chain → Hermes shows you what was done
+
+**You never need to type `/task-approve`, `/rfc`, or `/executor run` yourself.**
+Just talk to Hermes. He drives everything. You supervise and make decisions.
 
 **Why:** Big tech (Uber, Amazon, Rust, Meta) all use RFCs. They catch design
 mistakes BEFORE code is written. Cheaper to fix a design on paper than in code.
@@ -374,31 +377,28 @@ The Python script `executor.py` runs the ENTIRE chain in one call:
 4. Outputs the work prompt for the sub-agent
 5. ONLY stops if CEO decision needed (architecture/design tasks)
 
-**The flow:**
+**The flow (internal — happens inside the AI):**
 ```
-Talk to any agent → creates task → board
-  → I run /run-chain <task-id>
-  → executor.py routes through ALL levels automatically:
+Developer talks to Hermes → Hermes calls task_create() internally
+  → Auto-dispatch routes to department head
+  → Developer says "start" → Hermes calls task_approve() internally
+  → Hermes calls executor.run(task_id) internally:
        @Hermes → @DeptHead → @Lead → @Senior → @Junior
-  → I launch a sub-agent for @Junior with the work prompt
-  → @Junior works autonomously → reports back to me
-  → I run /report-up → executor.py routes results back up:
+  → Each level gets its work prompt automatically
+  → Levels work autonomously → results report back up:
        @Junior → @Senior → @Lead → @DeptHead → @Hermes → CEO
+  → Hermes shows the developer the result
 ```
 
-**Commands:**
-- `/run-chain <task-id>` — Execute the ENTIRE chain. Routes through all levels, outputs work prompt. Then I launch a sub-agent for the executor.
-- `/report-up <task-id> <from-agent>` — Route results back up after sub-agent finishes
-- `/chain-plan <task-id>` — Preview the chain without running
+**How it works (all internal MCP tool calls, no CLI commands):**
+1. **Execute chain:** Call `executor.run(task_id)` → routes through ALL levels in one call
+2. **Each level executes:** The executor gives each agent its scope. They run their MCP tools.
+3. **Report up:** When work completes, `executor.report_up()` routes results back up the chain
+4. **Show developer:** Hermes presents the final result
 
-**How I use it — the 3-step pattern:**
-1. **Execute chain:** `/run-chain task-001` → executor.py routes through all levels
-2. **Launch sub-agent:** I read the executor output, launch a sub-agent with the work prompt
-3. **Report up:** When sub-agent finishes, run `/report-up` to route results back
-
-**Why this fixes the old problem:**
-Before: Human had to manually ping each agent. Chain stopped after Hermes.
-Now: ONE command routes through ALL levels. No manual routing. No "chain stops."
+**Why this works:**
+Before: AI told developer to run commands. Chain stopped after Hermes.
+Now: AI calls MCP tools internally. One call routes through ALL levels. Developer just supervises.
 
 ---
 

@@ -7,9 +7,10 @@ PRINCIPLE: The script is the body. The AI is the brain. The body controls the br
 Each agent is a Python class that:
   1. Receives a message from the developer or another agent
   2. Does deterministic work IN CODE (create task, route, notify)
-  3. Calls the AI for reasoning ONLY when needed (formulates a specific prompt)
+  3. Calls the AI for reasoning ONLY when needed via ask_ai()
   4. Takes the AI's response and decides what to do with it
   5. REFUSES if the AI tries to go outside the agent's role
+  6. Saves state so it can resume if the process is killed mid-way
 
 The skill .md file describes personality/style (for the AI prompt).
 The .py file IS the agent — it enforces behavior.
@@ -23,6 +24,7 @@ import os
 import sys
 import json
 import re
+import importlib
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -45,11 +47,9 @@ class Agent:
     skill_file = None  # path to .md for personality/style
 
     # What this agent CAN do (code-enforced)
-    # If an action is not in this list, the agent CANNOT do it
     allowed_actions = []
 
     # What this agent CANNOT do (code-enforced)
-    # If the AI suggests any of these, the script REFUSES
     forbidden_actions = []
 
     # Who this agent reports to
@@ -58,36 +58,23 @@ class Agent:
     # Who this agent can route to
     can_route_to = []
 
-    # ── Per-agent correction rules ──
-    # Daedalus adds rules here when the developer corrects this agent.
-    # Each rule is a Python function that checks the AI's response.
-    # If the check fails, the response is rejected.
-    #
-    # Format:
-    #   correction_rules = [
-    #       ("rule_name", lambda message: "localStorage" not in message.lower(),
-    #        "Hermes must never suggest using localStorage"),
-    #   ]
+    # Per-agent correction rules (Daedalus adds rules here)
     correction_rules = []
 
-    def _check_correction_rules(self, message: str) -> tuple:
-        """
-        Check the AI's response against all per-agent correction rules.
-        Returns (passed: bool, reason: str).
-        If any rule fails, the response is REJECTED.
-        """
-        for rule_name, check_func, description in self.correction_rules:
-            try:
-                if not check_func(message):
-                    return (False, f"Rule '{rule_name}' violated: {description}")
-            except Exception as e:
-                # If the check function errors, fail safe (reject)
-                return (False, f"Rule '{rule_name}' errored: {e}")
-        return (True, "All rules passed")
-
     def __init__(self):
-        """Initialize the agent."""
+        """Initialize the agent. Set up session from env var."""
         self.project_root = self._get_project_root()
+        self.session_dir = None
+        self.agent_dir = None
+        session_id = os.environ.get("WF_SESSION_ID")
+        if session_id:
+            self.session_dir = Path(f"/tmp/wf-sess-{session_id}")
+            self.agent_dir = self.session_dir / self._dir_name()
+            self.agent_dir.mkdir(parents=True, exist_ok=True)
+
+    def _dir_name(self) -> str:
+        """Return the directory name for this agent (lowercase, no hyphens)."""
+        return re.sub(r'[^a-z0-9]', '', self.name.lower())
 
     def _get_project_root(self) -> Path:
         """Get the current project root from env or cwd."""
@@ -100,7 +87,8 @@ class Agent:
         """Set WEBFORGE_PROJECT so MCPs work."""
         os.environ["WEBFORGE_PROJECT"] = str(self.project_root)
 
-    # ── The main entry point ──
+    # ── MAIN ENTRY POINT ──
+
     def run(self, message: str, context: dict = None) -> dict:
         """
         Called when the developer or another agent talks to this agent.
@@ -110,14 +98,17 @@ class Agent:
         2. Determine what action is needed
         3. Check if this agent is ALLOWED to do it
         4. Execute the action IN CODE
-        5. If AI reasoning is needed, formulate a specific prompt
+        5. If AI reasoning is needed, call ask_ai() (makes direct API call)
         6. Return the result
 
         The AI never controls this flow. The script does.
         """
         self._set_project_env()
         context = context or {}
+        context["agent_name"] = self.name
 
+        # ── NORMAL FLOW ──
+        # (No resume check needed — ask_ai() now makes direct API calls synchronously)
         # 1. Parse the message
         parsed = self.parse_message(message, context)
 
@@ -141,8 +132,7 @@ class Agent:
         # 5. If the result contains AI suggestions outside scope, strip them
         result = self._sanitize_result(result)
 
-        # 6. Check per-agent correction rules (Daedalus adds these)
-        # If any rule fails, the response is REJECTED
+        # 6. Check per-agent correction rules
         if "message" in result:
             passed, reason = self._check_correction_rules(result["message"])
             if not passed:
@@ -151,29 +141,21 @@ class Agent:
                     f"The AI tried to do something a previous correction forbade."
                 )
 
-        # 7. Log to session
-        self._log(f"{self.name} executed: {parsed['action']}")
-
         return result
 
-    # ── Parse the developer's message ──
     def parse_message(self, message: str, context: dict) -> dict:
         """
         Parse the message to determine what action is needed.
         This is code — the AI doesn't decide what action to take.
-        The script parses keywords and patterns.
         """
         message_lower = message.lower().strip()
 
-        # Default action
         action = "respond"
         data = {"message": message, "raw": message}
 
-        # Detect Daedalus-specific actions FIRST (before generic "add" catches)
+        # Detect Daedalus-specific actions
         if any(word in message_lower for word in ["add rule", "correction rule", "blocking", "patch agent", "fix agent", "learn from corrections"]):
             action = "add_correction_rule"
-            # Parse: "add rule to hermes blocking localStorage"
-            # Extract agent name and pattern
             import re as _re
             agent_match = _re.search(r'(?:to|into)\s+(\w+)\s+(?:blocking|block|preventing|for)', message_lower)
             pattern_match = _re.search(r'blocking\s+(.+?)(?:$|\.)', message_lower)
@@ -184,62 +166,49 @@ class Agent:
             if "learn" in message_lower:
                 action = "learn"
 
-        # Detect bug reports
         elif any(word in message_lower for word in ["bug", "broken", "not working", "fix", "error", "crash", "nan", "undefined"]):
             action = "create_bugfix_task"
             data["title"] = message
             data["type"] = "bugfix"
 
-        # Detect feature requests (but not "add rule" which is caught above)
         elif any(word in message_lower for word in ["add", "create", "implement", "build", "new feature", "i want"]):
             action = "create_feature_task"
             data["title"] = message
             data["type"] = "feature"
 
-        # Detect research requests
-        elif any(word in message_lower for word in ["research", "investigate", "find out", "what's the best", "how does", "standards"]):
+        elif any(word in message_lower for word in ["research", "investigate", "find out", "what's the best", "how does", "standards", "survey", "scan", "analyze", "explore"]):
             action = "research"
             data["topic"] = message
 
-        # Detect documentation requests
         elif any(word in message_lower for word in ["document", "readme", "changelog", "docs", "api docs"]):
             action = "generate_docs"
             data["doc_type"] = message
 
-        # Detect questions
         elif any(word in message_lower for word in ["what", "why", "how", "should", "which", "can you"]):
             action = "answer_question"
             data["question"] = message
 
-        # Detect status checks
         elif any(word in message_lower for word in ["status", "standup", "progress", "what's happening", "where are we"]):
             action = "run_standup"
 
-        # Detect code requests (most agents should refuse this)
         elif any(word in message_lower for word in ["code", "write", "function", "component", "refactor", "deploy"]):
             action = "write_code"
             data["task"] = message
 
         return {"action": action, "data": data}
 
-    # ── Check if action is allowed ──
     def is_allowed(self, action: str) -> bool:
         """Check if this agent is allowed to do this action."""
         if not self.allowed_actions:
-            return True  # Base agent allows everything
+            return True
         return action in self.allowed_actions
 
-    # ── Check if action is forbidden ──
     def is_forbidden(self, action: str) -> bool:
         """Check if this action is explicitly forbidden."""
         return action in self.forbidden_actions
 
-    # ── Execute the action (override in subclasses) ──
     def execute(self, action: str, data: dict, context: dict) -> dict:
-        """
-        Execute the action. This is overridden by each agent subclass.
-        The base class just returns a message.
-        """
+        """Override in subclasses. The base class just returns a message."""
         return {
             "agent": self.name,
             "action": action,
@@ -247,29 +216,185 @@ class Agent:
             "next_step": None,
         }
 
-    # ── Refuse an action ──
+    # ── AI COMMUNICATION (ask_ai) ──
+
+    def ask_ai(self, instruction: str, response_format: str = "") -> dict:
+        """
+        Call the AI directly via HTTP API (DeepSeek or Z.ai).
+
+        SYNCHRONOUS — blocks until the AI responds. No pipeline handoff,
+        no file writing, no resume needed.
+
+        The AI is just the brain. The script calls it, gets the answer,
+        and continues executing. No handoff.
+
+        Args:
+            instruction: What the AI needs to reason about
+            response_format: Optional format hint (appended to instruction)
+
+        Returns:
+            dict parsed from AI's JSON response (keys: status, action, target, message, etc.)
+        """
+        from ai_client import call_ai_json
+
+        skill = self._load_skill()
+
+        # Build the system prompt: who the AI is, what its role is
+        system_prompt = (
+            f"You are {self.name}. {self.department} department.\n\n"
+            f"Your role (from skill file):\n{skill[:2000]}\n\n"
+            f"Respond with a JSON object containing the fields requested.\n"
+            f"Never suggest actions outside your role. Stay in character.\n"
+            f"Be concise and direct."
+        )
+
+        # Build the user instruction
+        user_parts = [instruction]
+        if response_format:
+            user_parts.append(f"\n\nExpected response format:\n{response_format}")
+        user_parts.append(
+            "\n\nRespond with valid JSON only. No markdown, no code fences, "
+            "no extra explanation outside the JSON."
+        )
+        user_instruction = "\n".join(user_parts)
+
+        # Call the AI directly (blocking)
+        response = call_ai_json(
+            system_prompt=system_prompt,
+            user_instruction=user_instruction,
+            temperature=0.3,
+            max_tokens=2000,
+        )
+
+        # Log the AI interaction
+        self._log(f"ask_ai → {self.name}: {instruction[:100]}...")
+
+        # Check correction rules on the response
+        message_text = response.get("message", "")
+        passed, reason = self._check_correction_rules(message_text)
+        if not passed:
+            return {
+                "status": "correction_violated",
+                "action": "refused",
+                "message": f"AI response violated correction rule: {reason}",
+            }
+
+        return response
+
+    # ── DIRECT AGENT CALLS ──
+
+    def _call_agent(self, agent_name: str, message: str, context: dict = None) -> dict:
+        """
+        Call another agent DIRECTLY. Blocks until it returns.
+
+        This is how agents talk to each other without going through the pipeline.
+        The caller waits for the callee to finish.
+        """
+        context = context or {}
+        context["caller"] = self.name
+        context["agent_name"] = agent_name
+
+        # Save state: waiting for agent
+        self._save_state({
+            "status": "waiting_for_agent",
+            "waiting_for": agent_name,
+            "message_sent": message[:200],
+        })
+
+        try:
+            # Import the agent module dynamically
+            file_name = re.sub(r'[-\s]', '_', agent_name).lower()
+            class_name = re.sub(r'[-\s]', '', agent_name.title())
+
+            module = importlib.import_module(file_name)
+            agent_class = getattr(module, class_name)
+            agent = agent_class()
+
+            # Pass session down
+            if self.session_dir:
+                agent.session_dir = self.session_dir
+                agent.agent_dir = self.session_dir / agent._dir_name()
+                agent.agent_dir.mkdir(parents=True, exist_ok=True)
+
+            result = agent.run(message, context)
+            self._save_state({"status": "got_agent_result", "from": agent_name})
+            return result
+
+        except ModuleNotFoundError:
+            return {"status": "error", "message": f"Agent module not found: {agent_name}"}
+        except AttributeError:
+            return {"status": "error", "message": f"Agent class not found in module: {class_name}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Error calling {agent_name}: {e}"}
+
+    def _report_up(self, result: dict) -> dict:
+        """
+        Send a result up the chain of command.
+        Calls reports_to directly.
+        """
+        if not self.reports_to:
+            return result  # No one to report to (top of chain)
+
+        return self._call_agent(self.reports_to, json.dumps(result))
+
+    # ── STATE MANAGEMENT ──
+
+    def _save_state(self, state: dict):
+        """Save this agent's state to the session dir."""
+        if not self.agent_dir:
+            return
+        state["agent"] = self.name
+        state["timestamp"] = datetime.now(timezone.utc).isoformat()
+        state_path = self.agent_dir / "state.json"
+        try:
+            with open(state_path, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+        except Exception:
+            pass
+
+    def _load_state(self) -> dict:
+        """Load this agent's state from the session dir."""
+        if not self.agent_dir:
+            return {}
+        state_path = self.agent_dir / "state.json"
+        if not state_path.exists():
+            return {}
+        try:
+            with open(state_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _clear_state(self):
+        """Clear this agent's state."""
+        if not self.agent_dir:
+            return
+        state_path = self.agent_dir / "state.json"
+        try:
+            if state_path.exists():
+                state_path.unlink()
+        except Exception:
+            pass
+
+    # ── HELPERS ──
+
     def _refuse(self, reason: str) -> dict:
         """The script refuses to do something. The AI doesn't get a say."""
         return {
             "agent": self.name,
             "action": "refused",
-            "message": f"🚫 REFUSED: {reason}",
+            "message": reason,
             "next_step": None,
             "refused": True,
         }
 
-    # ── Sanitize AI output ──
     def _sanitize_result(self, result: dict) -> dict:
-        """
-        If the AI's response contains suggestions outside this agent's scope,
-        strip them. The script only keeps what's relevant.
-        """
+        """Strip forbidden suggestions from AI output."""
         if "message" not in result:
             return result
 
         message = result["message"]
 
-        # Check for forbidden patterns in the AI's response
         for forbidden in self.forbidden_actions:
             forbidden_keywords = {
                 "write_code": ["i can code", "i can write", "i can fix", "let me write", "i'll code", "i can implement"],
@@ -282,7 +407,6 @@ class Agent:
 
             for keyword in forbidden_keywords:
                 if keyword.lower() in message.lower():
-                    # Strip the suggestion — the script refuses
                     message = re.sub(
                         rf'(?i){re.escape(keyword)}[^.]*\.?',
                         f"(I am {self.name} — that's not my job.)",
@@ -292,7 +416,6 @@ class Agent:
         result["message"] = message
         return result
 
-    # ── Suggest who should do this action ──
     def _suggest_who(self, action: str) -> str:
         """When refusing, suggest who SHOULD do this action."""
         suggestions = {
@@ -309,16 +432,14 @@ class Agent:
         }
         return suggestions.get(action, "Use /agents to see who can help.")
 
-    # ── Log to session ──
     def _log(self, message: str):
         """Log this agent's action to the session log."""
         try:
             from memory import session_append
             session_append(message, agent=self.name, kind="note")
-        except:
-            pass  # Don't fail if memory is unavailable
+        except Exception:
+            pass
 
-    # ── Load skill file for AI context ──
     def _load_skill(self) -> str:
         """Load the skill .md file for AI personality context."""
         if not self.skill_file:
@@ -328,37 +449,40 @@ class Agent:
             return skill_path.read_text(encoding="utf-8")
         return ""
 
-    # ── Route to another agent ──
+    def _check_correction_rules(self, message: str) -> tuple:
+        """
+        Check the AI's response against all per-agent correction rules.
+        Returns (passed: bool, reason: str).
+        """
+        for rule_name, check_func, description in self.correction_rules:
+            try:
+                if not check_func(message):
+                    return (False, f"Rule '{rule_name}' violated: {description}")
+            except Exception as e:
+                return (False, f"Rule '{rule_name}' errored: {e}")
+        return (True, "All rules passed")
+
+    def _formulate_prompt(self, task: str, context: dict = None) -> str:
+        """Formulate a constrained prompt for the AI."""
+        skill = self._load_skill()
+        return (
+            f"You are {self.name}. {self.department} department.\n\n"
+            f"Your role (from skill file):\n{skill[:500]}\n\n"
+            f"Task: {task}\n"
+            f"Context: {json.dumps(context or {})}\n\n"
+            f"Respond concisely. Stay in character. Do NOT suggest actions "
+            f"outside your role."
+        )
+
     def _route_to(self, agent_name: str, message: str, task_id: str = "") -> dict:
-        """
-        Route work to another agent. This is CODE — not AI.
-        The script calls the other agent's script.
-        """
+        """Route work to another agent. Now uses _call_agent instead."""
         if agent_name not in self.can_route_to:
             return self._refuse(
                 f"I am {self.name}. I cannot route to @{agent_name}. "
                 f"I can only route to: {', '.join(self.can_route_to)}"
             )
+        return self._call_agent(agent_name, message, {"task_id": task_id})
 
-        # Log the routing
-        self._log(f"{self.name} routing to @{agent_name}: {message}")
-
-        # Send notification
-        try:
-            from notify import notify
-            notify(agent_name, "TASK_ROUTED", message, task_id, from_agent=self.name)
-        except:
-            pass
-
-        return {
-            "agent": self.name,
-            "action": "route",
-            "routed_to": agent_name,
-            "message": f"📤 Routed to @{agent_name}: {message}",
-            "next_step": f"Talk to @{agent_name} or use /build to start.",
-        }
-
-    # ── Create a task (code, not AI) ──
     def _create_task(self, title: str, task_type: str = "feature",
                      area: str = "", effort: str = "M") -> dict:
         """Create a task in the Kanban board. This is CODE."""
@@ -371,21 +495,10 @@ class Agent:
         except Exception as e:
             return {"error": str(e)}
 
-    # ── Generate AI prompt ──
-    def _formulate_prompt(self, task: str, context: dict = None) -> str:
+    def _handle_ai_response(self, response: dict, context: dict) -> dict:
         """
-        Formulate a specific prompt for the AI.
-        The AI gets a CONSTRAINED question — not open-ended.
-
-        Example: "Analyze this message and tell me if it's a bug or feature.
-        Reply with one word: 'bug' or 'feature'."
+        Handle a response from ask_ai() after resume.
+        Subclasses override this to react to the AI response.
+        Default: just return the response as-is.
         """
-        skill = self._load_skill()
-        return (
-            f"You are {self.name}. {self.department} department.\n\n"
-            f"Your role (from skill file):\n{skill[:500]}\n\n"
-            f"Task: {task}\n"
-            f"Context: {json.dumps(context or {})}\n\n"
-            f"Respond concisely. Stay in character. Do NOT suggest actions "
-            f"outside your role."
-        )
+        return response

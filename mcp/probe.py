@@ -62,8 +62,8 @@ def scan_project() -> dict:
                 "dependencies": list(pkg.get("dependencies", {}).keys()),
                 "dev_dependencies": list(pkg.get("devDependencies", {}).keys()),
             }
-        except:
-            pass
+        except Exception as _e:
+            write_log("Probe", "Athena", "parse package.json", {"error": str(_e)})
 
     # 2. Pages (Next.js App Router)
     src_app = project / "src" / "app"
@@ -123,8 +123,8 @@ def scan_project() -> dict:
         if status_result.returncode == 0:
             changes = [l for l in status_result.stdout.strip().split("\n") if l]
             result["git_info"]["uncommitted_changes"] = len(changes)
-    except:
-        pass
+    except Exception as _e:
+        write_log("Probe", "Athena", "get git info", {"error": str(_e)})
 
     # 10. Stats
     all_files = [f for f in project.rglob("*") if f.is_file()
@@ -159,8 +159,8 @@ def probe_existing() -> McpResult:
             agent="Athena",
             kind="note"
         )
-    except:
-        pass
+    except Exception as _e:
+        write_log("Probe", "Athena", "save scan to memory", {"error": str(_e)})
 
     write_log("Probe", "Athena", "probe_existing", {
         "files": scan["stats"]["total_files"],

@@ -1,189 +1,274 @@
 #!/usr/bin/env python3
 """
-MCP 1 — Pipeline MCP (Hermes's main tool)
-Tier 1 — Foundation
+Pipeline — Hook system for agent execution.
 
-This is the most important MCP. It manages the trigger chain.
-When an agent signals done, this MCP receives the signal, checks
-what comes next in the pipeline, and wakes the next agent.
+THE PIPELINE IS THE LAUNCHER. It runs agent scripts and shows their output.
 
-It also handles pausing — when a decision is needed from the developer,
-this MCP halts the chain and flags the CEO.
+What the pipeline does:
+  1. Detects @AgentName or /talk in user messages
+  2. Creates a session dir for tracking
+  3. Runs the agent script as a subprocess
+  4. Shows output in real-time
+  5. Session cleanup on completion
 
-Owner: Hermes (COO / Scheduler)
+What the pipeline does NOT do:
+  - Call AI (agents do that directly via ai_client.py)
+  - Resume/handoff (agents use synchronous API calls)
+  - Route between agents (scripts call each other directly)
+
+FLOW:
+  trigger: run script → script runs (may call AI inline) → script finishes → done
+
+USAGE:
+  python3 pipeline.py trigger <agent_name> <message>
+  python3 pipeline.py status [session_id]
+  python3 pipeline.py <@AgentName message>
 """
 
 import json
 import sys
+import os
+import re
+import time
+import uuid
+import subprocess
 from pathlib import Path
-from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent))
-from common import write_log, utc_now, notify_hermes, success, fail, McpResult
+from common import write_log, utc_now, success, fail, McpResult
 
-PIPELINE_FILE = Path("~/webforge/logs/pipeline-state.json").expanduser()
-
-# Standard pipeline order
-DEFAULT_PIPELINE = [
-    "intelligence.probe",      # Probe team assesses
-    "intelligence.odin",       # Odin team researches
-    "intelligence.dorian",     # Dorian does UI research
-    "ceo.review_intelligence", # CEO reviews with developer
-    "build.frontend",          # Frontend builds
-    "build.backend",           # Backend builds
-    "build.database",          # Database/Infra builds
-    "quality.verdict",         # Verdict checks standards
-    "quality.nemesis",         # Nemesis tests
-    "quality.janus",           # Janus security
-    "quality.pulse",           # Pulse bug fixing
-    "ceo.final_review",        # CEO final review
-    "documentation.finalize",  # Docs finalize
-]
+AGENTS_DIR = Path.home() / "webforge" / "agents"
+SESSION_BASE = Path("/tmp")
+SESSION_TTL = 3600
 
 
-def load_state():
-    """Load current pipeline state from file."""
-    if not PIPELINE_FILE.exists():
-        return {
-            "current_step": 0,
-            "pipeline": DEFAULT_PIPELINE,
-            "status": "idle",
-            "history": [],
-            "started_at": None,
-        }
-    with open(PIPELINE_FILE, "r", encoding="utf-8") as f:
+# ── Session Management ──
+
+def create_session(user_message: str, agent_name: str) -> tuple:
+    """Create a new session directory. Returns (session_dir, session_id)."""
+    session_id = uuid.uuid4().hex[:12]
+    session_dir = SESSION_BASE / f"wf-sess-{session_id}"
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    session_data = {
+        "session_id": session_id,
+        "agent_name": agent_name,
+        "user_message": user_message,
+        "started_at": utc_now(),
+        "status": "running",
+    }
+    with open(session_dir / "session.json", "w", encoding="utf-8") as f:
+        json.dump(session_data, f, indent=2)
+
+    return session_dir, session_id
+
+
+def load_session(session_dir: Path) -> dict:
+    """Load session data from a session directory."""
+    session_file = session_dir / "session.json"
+    if not session_file.exists():
+        return {}
+    with open(session_file, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def save_state(state):
-    """Save pipeline state to file."""
-    PIPELINE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(PIPELINE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2, ensure_ascii=False)
+def save_session(session_dir: Path, data: dict):
+    """Save session data."""
+    with open(session_dir / "session.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
 
 
-def wake_agent(agent_name: str, task: str) -> McpResult:
-    """Wake a specific agent with a task."""
-    state = load_state()
-    state["history"].append({
-        "timestamp": utc_now(),
-        "action": "wake",
+def find_session(session_id: str) -> Path:
+    """Find a session directory by ID."""
+    candidate = SESSION_BASE / f"wf-sess-{session_id}"
+    if candidate.exists():
+        return candidate
+    return None
+
+
+def clean_session(session_dir: Path):
+    """Clean up a session directory."""
+    if not session_dir or not session_dir.exists():
+        return
+    try:
+        import shutil
+        shutil.rmtree(session_dir)
+    except Exception as e:
+        print(f"  ⚠️  Could not clean session: {e}", file=sys.stderr)
+
+
+# ── Parsing ──
+
+def parse_agent_message(raw_message: str) -> tuple:
+    """
+    Parse @AgentName or /talk AgentName from a message.
+    Returns (agent_name, message_without_trigger).
+    """
+    text = raw_message.strip()
+    at_match = re.match(r'@(\w[\w-]*)\s*(.*)', text)
+    if at_match:
+        return at_match.group(1), at_match.group(2).strip()
+    talk_match = re.match(r'/talk\s+(\w[\w-]*)\s*(.*)', text, re.IGNORECASE)
+    if talk_match:
+        return talk_match.group(1), talk_match.group(2).strip()
+    return None, raw_message
+
+
+def find_agent_script(agent_name: str) -> Path:
+    """Find the agent script file by name."""
+    file_name = re.sub(r'[-\s]', '_', agent_name).lower()
+    script = AGENTS_DIR / f"{file_name}.py"
+    if script.exists():
+        return script
+    file_name2 = agent_name.lower().replace(' ', '_').replace('-', '_')
+    script2 = AGENTS_DIR / f"{file_name2}.py"
+    if script2.exists():
+        return script2
+    return None
+
+
+# ── Trigger ──
+
+def trigger(agent_name: str, message: str) -> McpResult:
+    """
+    Trigger an agent script.
+
+    Runs the script as a subprocess. The script may make direct API calls
+    (ai_client.py) which block until the AI responds. The pipeline just
+    shows output and waits for the script to finish.
+    """
+    script = find_agent_script(agent_name)
+    if not script:
+        return fail(f"Agent not found: @{agent_name}")
+
+    # Create session
+    session_dir, session_id = create_session(message, agent_name)
+
+    print(f"  ▶️  Running @{agent_name}")
+    print(f"  📁 Session: {session_id}")
+    sys.stdout.flush()
+
+    # Run the script
+    cmd = [sys.executable, str(script), message]
+    env = os.environ.copy()
+    env["WF_SESSION_ID"] = session_id
+    env["WF_SESSION_DIR"] = str(session_dir)
+    env["WEBFORGE_PROJECT"] = os.environ.get("WEBFORGE_PROJECT", str(Path.cwd()))
+
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, env=env, bufsize=1,
+    )
+
+    # Read stdout until script exits
+    for line in iter(process.stdout.readline, ''):
+        line = line.rstrip()
+        if not line:
+            continue
+        print(line)
+        sys.stdout.flush()
+
+    process.wait()
+
+    # Mark session completed
+    session_data = load_session(session_dir)
+    session_data["status"] = "completed"
+    session_data["return_code"] = process.returncode
+    save_session(session_dir, session_data)
+
+    clean_session(session_dir)
+
+    return_code = process.returncode
+    if return_code != 0:
+        return fail(f"@{agent_name} exited with code {return_code}")
+
+    return success({
         "agent": agent_name,
-        "task": task,
-    })
-    save_state(state)
-    write_log("Pipeline", "Hermes", "wake_agent",
-              {"agent": agent_name, "task": task})
-    print(f"[Pipeline] Waking {agent_name} for task: {task}")
-    return success({"agent": agent_name, "task": task})
-
-
-def signal_done(agent_name: str, report: str) -> McpResult:
-    """An agent signals it is done. Move to next step in pipeline."""
-    state = load_state()
-    state["history"].append({
-        "timestamp": utc_now(),
-        "action": "done",
-        "agent": agent_name,
-        "report": report,
+        "session_id": session_id,
+        "status": "completed",
+        "return_code": return_code,
     })
 
-    # Advance to next step
-    state["current_step"] += 1
 
-    if state["current_step"] >= len(state["pipeline"]):
-        state["status"] = "complete"
-        save_state(state)
-        print("[Pipeline] Pipeline complete!")
-        return success({"status": "complete"})
+# ── Status ──
 
-    next_step = state["pipeline"][state["current_step"]]
-    state["status"] = f"running:{next_step}"
-    save_state(state)
+def status(session_id: str = None) -> McpResult:
+    """Check the status of a session or list all active sessions."""
+    if session_id:
+        session_dir = find_session(session_id)
+        if not session_dir:
+            return fail(f"Session not found: {session_id}")
+        data = load_session(session_dir)
+        return success(data)
 
-    print(f"[Pipeline] Agent {agent_name} done. Next: {next_step}")
-    write_log("Pipeline", "Hermes", "advance_pipeline",
-              {"from": agent_name, "to": next_step})
-    return success({"next_step": next_step, "report": report})
+    sessions = []
+    for item in sorted(SESSION_BASE.glob("wf-sess-*")):
+        if item.is_dir() and time.time() - item.stat().st_mtime < SESSION_TTL:
+            data = load_session(item)
+            sessions.append({
+                "session_id": item.name.replace("wf-sess-", ""),
+                "agent": data.get("agent_name", "?"),
+                "status": data.get("status", "?"),
+                "age_seconds": int(time.time() - item.stat().st_mtime),
+            })
 
+    # Clean old sessions
+    for item in SESSION_BASE.glob("wf-sess-*"):
+        if item.is_dir() and time.time() - item.stat().st_mtime > SESSION_TTL:
+            clean_session(item)
 
-def pause_for_developer(question: str, agent_name: str) -> McpResult:
-    """Halt the pipeline and ask the developer a question (Law 5)."""
-    state = load_state()
-    state["status"] = "paused_for_developer"
-    state["pending_question"] = {
-        "from": agent_name,
-        "question": question,
-        "timestamp": utc_now(),
-    }
-    save_state(state)
-    write_log("Pipeline", "Hermes", "pause_for_developer",
-              {"from": agent_name, "question": question})
-    print(f"\n[Pipeline] PAUSED — {agent_name} has a question for the developer:")
-    print(f"  {question}\n")
-    return success({"paused": True, "question": question})
+    return success({"sessions": sessions, "count": len(sessions)})
 
 
-def resume(answer: str) -> McpResult:
-    """Developer answered the pending question. Resume pipeline."""
-    state = load_state()
-    if state.get("status") != "paused_for_developer":
-        return fail("Pipeline is not paused")
-    question = state.pop("pending_question")
-    state["status"] = f"running:{state['pipeline'][state['current_step']]}"
-    state["history"].append({
-        "timestamp": utc_now(),
-        "action": "resume",
-        "question": question,
-        "answer": answer,
-    })
-    save_state(state)
-    write_log("Pipeline", "Hermes", "resume_after_answer",
-              {"question": question, "answer": answer})
-    print(f"[Pipeline] Resumed. Answer routed to {question['from']}.")
-    return success({"resumed": True, "answer": answer})
+# ── CLI Entry Point ──
+
+def handle_message(raw_message: str) -> str:
+    """Main entry point. Detects @AgentName and triggers pipeline."""
+    agent_name, message = parse_agent_message(raw_message)
+    if agent_name:
+        result = trigger(agent_name, message)
+        return json.dumps(result.to_dict(), indent=2)
+    print("  ℹ️  No agent mentioned. Message goes directly to OpenCode.")
+    return json.dumps({"status": "direct", "message": raw_message})
 
 
-def get_status() -> McpResult:
-    """Get current pipeline status."""
-    state = load_state()
-    return success(state)
-
-
-def reset_pipeline() -> McpResult:
-    """Reset pipeline to idle state."""
-    state = {
-        "current_step": 0,
-        "pipeline": DEFAULT_PIPELINE,
-        "status": "idle",
-        "history": [],
-        "started_at": utc_now(),
-    }
-    save_state(state)
-    write_log("Pipeline", "Hermes", "reset_pipeline", {})
-    return success({"reset": True})
-
-
-# CLI
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python pipeline.py <command> [args]")
-        print("Commands: status, wake <agent> <task>, done <agent> <report>,")
-        print("          pause <question> <agent>, resume <answer>, reset")
+        print("WebForge Pipeline — Agent Launcher")
+        print()
+        print("Usage:")
+        print("  python pipeline.py trigger <agent_name> <message>")
+        print("  python pipeline.py status [session_id]")
+        print("  python pipeline.py <@AgentName message>")
+        print("  python pipeline.py </talk AgentName message>")
+        print()
+        print("Examples:")
+        print("  python pipeline.py trigger hermes 'close task-003'")
+        print("  python pipeline.py '@Hermes research the codebase'")
         sys.exit(1)
 
     cmd = sys.argv[1]
-    if cmd == "status":
-        print(json.dumps(get_status().to_dict(), indent=2))
-    elif cmd == "wake":
-        print(wake_agent(sys.argv[2], sys.argv[3]).to_dict())
-    elif cmd == "done":
-        print(signal_done(sys.argv[2], sys.argv[3]).to_dict())
-    elif cmd == "pause":
-        print(pause_for_developer(sys.argv[2], sys.argv[3]).to_dict())
+
+    if cmd in ("trigger", "talk") and len(sys.argv) >= 4:
+        agent_name = sys.argv[2].lstrip("@")
+        message = " ".join(sys.argv[3:])
+        result = trigger(agent_name, message)
+        print(json.dumps(result.to_dict(), indent=2))
+
+    elif cmd == "status":
+        result = status(sys.argv[2] if len(sys.argv) >= 3 else None)
+        print(json.dumps(result.to_dict(), indent=2))
+
+    elif cmd.startswith("@") or cmd.lower() == "/talk":
+        raw = " ".join(sys.argv[1:])
+        result = handle_message(raw)
+        print(result)
+
     elif cmd == "resume":
-        print(resume(sys.argv[2]).to_dict())
-    elif cmd == "reset":
-        print(reset_pipeline().to_dict())
+        print("  ℹ️  Resume is no longer needed. Agents call AI directly now.")
+        print("  ℹ️  Just run the agent fresh: pipeline.py trigger <agent> <message>")
+        sys.exit(0)
+
     else:
         print(f"Unknown command: {cmd}")
+        sys.exit(1)

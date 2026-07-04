@@ -328,8 +328,8 @@ def check(project_root):
 
         try:
             content = file_path.read_text(encoding="utf-8", errors="ignore")
-        except:
-            continue
+            except Exception:
+                continue
 
         for term in SEARCH_TERMS:
             if term.lower() in content.lower():

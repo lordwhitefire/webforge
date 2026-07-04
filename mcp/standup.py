@@ -94,7 +94,8 @@ def standup_run() -> McpResult:
                 lines.append(f"  {effort_badge} {t['id']}: {t['title']} [{owner}]")
         else:
             lines.append("  (nothing in progress — run /build to start a task)")
-    except:
+    except Exception as _e:
+        write_log("Standup", "Hermes", "load task board", {"error": str(_e)})
         doing = []
         todo = []
         backlog = []
@@ -118,8 +119,8 @@ def standup_run() -> McpResult:
                 lines.append(f"  ⛔ {t['id']}: {t['title']}")
                 lines.append(f"     Reason: {reason}")
                 lines.append(f"     → Fix the issue, then: /task-move {t['id']} todo")
-    except:
-        pass
+    except Exception as _e:
+        write_log("Standup", "Hermes", "check blocked tasks", {"error": str(_e)})
 
     # Open bugs (high severity = blockers)
     try:
@@ -134,8 +135,8 @@ def standup_run() -> McpResult:
                 clean_title = b["title"].split("] ", 1)[-1] if "] " in b["title"] else b["title"]
                 lines.append(f"  🐛 {b['id']}: {clean_title}")
                 lines.append(f"     → Fix: /build → /task-approve {b['id']}")
-    except:
-        pass
+    except Exception as _e:
+        write_log("Standup", "Hermes", "check high severity bugs", {"error": str(_e)})
 
     if not has_blockers:
         lines.append("  ✅ No blockers — full speed ahead!")
@@ -155,10 +156,10 @@ def standup_run() -> McpResult:
             bugs = bug_result.data.get("bugs", [])
             if bugs:
                 lines.append(f"  Open bugs: {len(bugs)}")
-        except:
-            pass
-    except:
-        pass
+        except Exception as _e:
+            write_log("Standup", "Hermes", "get bug count", {"error": str(_e)})
+    except Exception as _e:
+        write_log("Standup", "Hermes", "get board summary", {"error": str(_e)})
 
     # ── 5. RULES REMINDER ──
     lines.append("")
@@ -189,7 +190,8 @@ def standup_run() -> McpResult:
                 lines.append(f"  {emoji} → @{n['agent']}: {n['message'][:80]}")
         else:
             lines.append("  ✅ No unread notifications. Everyone is caught up.")
-    except:
+    except Exception as _e:
+        write_log("Standup", "Hermes", "get notifications", {"error": str(_e)})
         lines.append("  (notification system not available)")
 
     # ── 7. SUGGESTED NEXT ACTION ──
@@ -210,7 +212,8 @@ def standup_run() -> McpResult:
         else:
             lines.append("  → Create a task: /task \"description\" feature area effort")
             lines.append("    Then: /build")
-    except:
+    except Exception as _e:
+        write_log("Standup", "Hermes", "suggest next action", {"error": str(_e)})
         lines.append("  → /build to see next task")
 
     lines.append("")

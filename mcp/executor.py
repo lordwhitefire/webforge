@@ -125,6 +125,123 @@ TASK_TYPE_TO_DEPT = {
 }
 
 
+def chain_plan(task_id: str) -> McpResult:
+    """
+    Preview the chain WITHOUT routing or assigning.
+    Shows the developer what each level will do — no execution, just the plan.
+    This is the "show scope" step before the developer approves.
+    """
+    task = load_task(task_id)
+    if not task:
+        return fail(f"Task not found: {task_id}")
+
+    title = task.get("title", "Untitled")
+    task_type = task.get("type", "feature")
+    effort = task.get("effort", "M")
+    area = task.get("area", "")
+    description = task.get("description", "")
+    dept = TASK_TYPE_TO_DEPT.get(task_type, "build")
+
+    if dept not in DEPT_CHAINS:
+        return fail(f"Unknown department: {dept}")
+
+    chain = DEPT_CHAINS[dept]
+    levels = chain["levels"]
+
+    # Build the chain display — each level with their role
+    chain_roles = []
+    for level in levels:
+        agent = level["agent"]
+        action = level["action"]
+        is_executor = level["is_executor"]
+        label = "⚡ EXECUTOR" if is_executor else "  ROUTING"
+        chain_roles.append({
+            "agent": agent,
+            "action": action,
+            "is_executor": is_executor,
+        })
+
+    # Generate what each level would say based on task context
+    level_scope = []
+    for level in levels:
+        agent = level["agent"]
+        action = level["action"]
+        is_executor = level["is_executor"]
+
+        if "Hermes" in agent:
+            response_text = f"Received task {task_id}: {title}. Routing to department head."
+        elif "Hephaestus" in agent:
+            response_text = f"This is a {task_type} task. Routing to the right team head based on area '{area or 'general'}'."
+        elif "Aurora" in agent:
+            response_text = f"Frontend scope: {'Implement UI for ' + title if task_type in ('feature', 'bugfix') else 'Review frontend code for ' + title}. Estimated files to touch: 2-3."
+        elif "Titan" in agent:
+            response_text = f"Backend scope: {'Implement API/database for ' + title if task_type in ('feature', 'bugfix') else 'Review backend logic for ' + title}. Estimated files: 1-2."
+        elif "Zephyr" in agent:
+            response_text = f"Database scope: Check if schema changes are needed for {title}. Estimated migrations: 0-1."
+        elif "Lead" in agent or "Lead" in str(level):
+            response_text = f"Assigning to the right senior dev. Will review the implementation plan."
+        elif "Senior" in agent:
+            response_text = f"Reviewing requirements. {'This needs careful implementation — I will guide the junior.' if effort == 'L' else 'Straightforward task — can assign to junior.'}"
+        elif "Junior" in agent:
+            response_text = f"I will implement this. Areas covered: {area or title}. ETA based on effort ({effort})."
+        elif "Athena" in agent:
+            response_text = f"Research task: investigating {title}. Will report findings."
+        elif "Minos" in agent:
+            response_text = f"Quality check for {title}. Will run tests and code review."
+        elif "Thoth" in agent:
+            response_text = f"Documentation for {title}. Will write docs."
+        elif "Probe" in agent or "Odin" in agent:
+            response_text = f"Investigating: {title}. Will report findings with file paths."
+        elif "Quill" in agent or "Scroll" in agent or "Ledger" in agent:
+            response_text = f"Writing documentation for {title}."
+        else:
+            response_text = f"Working on: {title}."
+
+        level_scope.append({
+            "agent": agent,
+            "response": response_text,
+        })
+
+    # Build chain path
+    chain_path = " → ".join(l["agent"] for l in levels)
+    report_path = " → ".join(chain["report_up_chain"])
+
+    lines = []
+    lines.append("=" * 60)
+    lines.append(f"📋 CHAIN PLAN — {task_id}: {title}")
+    lines.append("=" * 60)
+    lines.append(f"  Department: {dept}")
+    lines.append(f"  Type: {task_type} | Effort: {effort} | Area: {area or 'n/a'}")
+    lines.append("")
+    lines.append("  Chain path (route down):")
+    lines.append(f"    {chain_path}")
+    lines.append("")
+    lines.append("  Report path (route up):")
+    lines.append(f"    {report_path}")
+    lines.append("")
+    lines.append("  What each level contributes:")
+    for item in level_scope:
+        lines.append(f"    @{item['agent']:<20s} → {item['response']}")
+    lines.append("")
+    lines.append("  ⚠️ This is a PLAN only. No tasks have been assigned yet.")
+    lines.append("  Approve to start: /task-approve " + task_id)
+
+    session_append(
+        f"CHAIN PLAN → {task_id}: {title} — {dept} — {len(levels)} levels",
+        agent="Chain Executor", kind="note"
+    )
+
+    return success({
+        "task_id": task_id,
+        "department": dept,
+        "chain_path": chain_path,
+        "report_path": report_path,
+        "levels": chain_roles,
+        "scope": level_scope,
+        "display": "\n".join(lines),
+    })
+
+
 def load_task(task_id: str) -> dict:
     board_file = get_project_root() / ".webforge" / "tasks" / "board.json"
     if board_file.exists():

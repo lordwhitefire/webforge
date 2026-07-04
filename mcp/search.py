@@ -74,7 +74,8 @@ def search(pattern: str, root: str = ".", file_glob: str = "*") -> McpResult:
                             break
                 if len(matches) >= 50:
                     break
-            except:
+            except Exception as _e:
+                write_log("Search", "Unknown", "read file in search", {"error": str(_e)})
                 continue
         write_log("Search", "Unknown", "search",
                   {"pattern": pattern, "matches": len(matches), "tool": "python"})

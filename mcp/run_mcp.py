@@ -18,6 +18,9 @@ import os
 import importlib.util
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+from common import write_log
+
 MCP_DIR = Path(__file__).parent
 
 
@@ -43,8 +46,8 @@ def list_mcps():
                         "owner": info.get("owner", "?"),
                     })
                     continue
-                except:
-                    pass
+                except Exception as _e:
+                    write_log("RunMCP", "Runner", "get MCP info", {"error": str(_e)})
             mcps.append({"file": f.name, "name": f.stem, "tier": "?", "owner": "?"})
         except Exception as e:
             mcps.append({"file": f.name, "name": f.stem, "tier": "!", "owner": f"error: {e}"})

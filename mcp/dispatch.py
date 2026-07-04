@@ -193,7 +193,7 @@ def route_task(task_id: str, from_agent: str = "Hermes") -> McpResult:
     # Pick the task (assign ownership to department head)
     try:
         from task import task_pick
-        pick_result = task_pick(task_id, dept_head)
+        pick_result = task_pick(task_id, dept_head, bypass_gate=True)
         if not pick_result.ok:
             return fail(f"Could not assign task: {pick_result.error}")
     except Exception as e:
@@ -203,8 +203,9 @@ def route_task(task_id: str, from_agent: str = "Hermes") -> McpResult:
     try:
         from notify import notify_task_assigned
         notify_task_assigned(task_id, task["title"], dept_head, from_agent=from_agent)
-    except Exception:
-        pass  # Notify might not be available
+    except Exception as e:
+        write_log("Dispatch", from_agent, "notify_failed",
+                  {"task_id": task_id, "error": str(e)})
 
     # Record the route
     route = {
@@ -235,6 +236,125 @@ def route_task(task_id: str, from_agent: str = "Hermes") -> McpResult:
     })
 
 
+def _build_agent_ranks() -> dict[str, int]:
+    """
+    Build a flat map of agent_name → rank (lower = higher authority).
+    Sources: CHAIN_OF_COMMAND dict + skills/ directory naming patterns.
+    
+    Rank tiers:
+        0   = CEO
+        100 = Hermes (COO)
+        200 = Department Directors (Hephaestus, Athena, Minos, Thoth)
+        300 = Department Heads (Aurora, Titan, Zephyr, Dorian, etc.)
+        400 = Leads (Lead-*, etc.)
+        500 = Seniors, Specialists (Sr-*, Probe-*, Odin-*, Verdict, etc.)
+        600 = Juniors (Jr-*)
+    """
+    ranks: dict[str, int] = {}
+
+    # ── Executive tier ──
+    ranks["CEO"] = 0
+    ranks["Hermes"] = 100
+
+    # ── Extract from CHAIN_OF_COMMAND ──
+    for dept_name, dept_config in CHAIN_OF_COMMAND.items():
+        if not isinstance(dept_config, dict):
+            continue
+
+        # Directors (rank 200)
+        director = dept_config.get("director", "")
+        if director and director not in ranks:
+            ranks[director] = 200
+
+        # Department heads (rank 300) — any key containing "head"
+        for key, value in dept_config.items():
+            if "head" in key and isinstance(value, str) and value not in ranks:
+                ranks[value] = 300
+
+        # Leads / Tech Leads / Senior Editors (rank 400)
+        for key in ["tech_lead", "tech_lead_frontend", "tech_lead_backend", "tech_lead_database",
+                     "lead", "senior_editor"]:
+            value = dept_config.get(key, "")
+            if isinstance(value, str) and value and value not in ranks:
+                ranks[value] = 400
+            elif isinstance(value, list):
+                for agent in value:
+                    if agent not in ranks:
+                        ranks[agent] = 400
+
+        # Seniors (rank 500)
+        for key in dept_config:
+            if key.startswith("senior"):
+                value = dept_config[key]
+                if isinstance(value, str) and value not in ranks:
+                    ranks[value] = 500
+                elif isinstance(value, list):
+                    for agent in value:
+                        if agent not in ranks:
+                            ranks[agent] = 500
+
+        # Juniors (rank 600)
+        for key in dept_config:
+            if key.startswith("junior"):
+                value = dept_config[key]
+                if isinstance(value, str) and value not in ranks:
+                    ranks[value] = 600
+                elif isinstance(value, list):
+                    for agent in value:
+                        if agent not in ranks:
+                            ranks[agent] = 600
+
+        # Intelligence specialist teams (Probe-*, Odin-*) → rank 500
+        for key in dept_config:
+            if key in ("probe_team", "odin_team", "quill_team", "memory_team"):
+                for agent in dept_config.get(key, []):
+                    if agent not in ranks:
+                        ranks[agent] = 500
+
+    # ── Scan skills directory for any agents not yet ranked ──
+    try:
+        skills_dir = Path(__file__).parent.parent / "skills"
+        if skills_dir.is_dir():
+            for dept_dir in sorted(skills_dir.iterdir()):
+                if not dept_dir.is_dir():
+                    continue
+                for skill_file in sorted(dept_dir.glob("*.md")):
+                    name = skill_file.stem
+                    if name not in ranks:
+                        # Determine rank from name pattern
+                        if name.startswith("Jr-") or name.startswith("Draft"):
+                            ranks[name] = 600
+                        elif name.startswith(("Sr-", "Probe-", "Odin-")):
+                            ranks[name] = 500
+                        elif name.startswith("Lead-"):
+                            ranks[name] = 400
+                        elif name in ("Quill", "Scroll", "Stamp", "Ledger"):
+                            ranks[name] = 500
+                        elif name in ("Memory-Architecture", "Memory-Choices", "Memory-Forgotten"):
+                            ranks[name] = 500
+                        else:
+                            # Default: specialist (rank 500)
+                            ranks[name] = 500
+    except (OSError, ImportError, AttributeError):
+        pass  # Skills directory may not exist — use CHAIN_OF_COMMAND only
+
+    return ranks
+
+_AGENT_RANKS: dict[str, int] = _build_agent_ranks()
+
+def _validate_route_down(from_agent: str, to_agent: str) -> str | None:
+    """Return error message if from_agent is NOT above to_agent. None = valid."""
+    f_rank = _AGENT_RANKS.get(from_agent)
+    t_rank = _AGENT_RANKS.get(to_agent)
+    if f_rank is None:
+        return f"'{from_agent}' is not in the chain of command"
+    if t_rank is None:
+        return f"'{to_agent}' is not in the chain of command"
+    if f_rank >= t_rank:
+        return (f"'{from_agent}' (rank {f_rank}) is not above "
+                f"'{to_agent}' (rank {t_rank}) in chain of command")
+    return None
+
 def route_down(task_id: str, to_agent: str, from_agent: str = "") -> McpResult:
     """
     Route a task DOWN the chain from one agent to another.
@@ -250,8 +370,17 @@ def route_down(task_id: str, to_agent: str, from_agent: str = "") -> McpResult:
     if not task:
         return fail(f"Task not found: {task_id}")
 
+    # ── Chain-of-command validation ──
+    if from_agent:
+        error = _validate_route_down(from_agent, to_agent)
+        if error:
+            write_log("Dispatch", from_agent, "route_down_rejected",
+                      {"task_id": task_id, "from": from_agent,
+                       "to": to_agent, "reason": error})
+            return fail(f"Route down rejected: {error}")
+
     # Assign to the new agent
-    pick_result = task_pick(task_id, to_agent)
+    pick_result = task_pick(task_id, to_agent, bypass_gate=True)
     if not pick_result.ok:
         return fail(f"Could not assign: {pick_result.error}")
 
@@ -265,8 +394,9 @@ def route_down(task_id: str, to_agent: str, from_agent: str = "") -> McpResult:
             task_id=task_id,
             from_agent=from_agent or "Dispatch",
         )
-    except Exception:
-        pass
+    except Exception as e:
+        write_log("Dispatch", to_agent, "notify_failed",
+                  {"error": str(e), "task_id": task_id})
 
     # Record the route
     routes = load_routes()
@@ -330,8 +460,9 @@ def route_up(task_id: str, from_agent: str, to_agent: str = "") -> McpResult:
             task_id=task_id,
             from_agent=from_agent,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        write_log("Dispatch", from_agent, "notify_failed",
+                  {"task_id": task_id, "error": str(e)})
 
     session_append(
         f"DISPATCH UP → {task_id}: @{from_agent} → @{to_agent}",
@@ -493,14 +624,14 @@ def show_chain(agent_name: str = "") -> McpResult:
     return success({"message": "\n".join(lines)})
 
 
-# ── Auto-dispatch on task creation — routes to Hermes first ──
+# ── Auto-dispatch on task creation — routes through Hermes to department head ──
 def auto_dispatch(task_id: str, task_type: str, title: str,
                   from_agent: str = "Agent") -> McpResult:
     """
     Called automatically when a task is created by ANY agent.
-    Routes the task to Hermes (COO) who then routes to the right department head.
+    Routes through Hermes to the correct department head in one shot.
+    No AI intervention needed — the code knows where it should go.
     """
-    # Route to Hermes — he's the central coordinator
     sys.path.insert(0, str(Path(__file__).parent))
     from task import load_board, find_task, task_pick
 
@@ -509,25 +640,13 @@ def auto_dispatch(task_id: str, task_type: str, title: str,
     if not task:
         return fail(f"Task not found: {task_id}")
 
-    # Assign to Hermes
-    pick_result = task_pick(task_id, "Hermes")
+    dept = get_department(task_type)
+    dept_head = get_department_head(dept)
+
+    # Assign to Hermes first (for audit trail), then immediately route to dept head
+    pick_result = task_pick(task_id, "Hermes", bypass_gate=True)
     if not pick_result.ok:
         return fail(f"Could not assign to Hermes: {pick_result.error}")
-
-    # Notify Hermes
-    try:
-        from notify import notify
-        dept = get_department(task_type)
-        dept_head = get_department_head(dept)
-        notify(
-            agent_name="Hermes",
-            event="TASK_CREATED",
-            message=f"New task {task_id} from @{from_agent}: {title} (type: {task_type}). Route to @{dept_head} with: /dispatch-route {task_id}",
-            task_id=task_id,
-            from_agent=from_agent or "System",
-        )
-    except Exception:
-        pass
 
     # Record route to Hermes
     routes = load_routes()
@@ -537,27 +656,45 @@ def auto_dispatch(task_id: str, task_type: str, title: str,
         "type": task_type,
         "routed_from": from_agent or "System",
         "routed_to": "Hermes",
-        "status": "pending_routing",
+        "status": "auto_routed",
         "routed_at": utc_now(),
         "chain_position": "hermes_inbox",
     }
     routes["routes"].append(route)
     save_routes(routes)
 
-    dept = get_department(task_type)
-    dept_head = get_department_head(dept)
+    # Immediately route to department head — no AI needed
+    try:
+        hermes_route(task_id, from_agent="System (auto-dispatch)")
+    except Exception as e:
+        write_log("Dispatch", "System", "auto_route_failed",
+                  {"task_id": task_id, "error": str(e)})
+        # Notify Hermes that auto-route failed
+        try:
+            from notify import notify
+            notify(
+                agent_name="Hermes",
+                event="TASK_CREATED",
+                message=f"Task {task_id} from @{from_agent}: {title}. Auto-route to @{dept_head} FAILED: {e}. Route manually with: /dispatch-route {task_id}",
+                task_id=task_id,
+                from_agent="System",
+            )
+        except Exception as notify_e:
+            write_log("Dispatch", "System", "notify_failed",
+                      {"task_id": task_id, "error": str(notify_e)})
+        return fail(f"Auto-route failed: {e}")
 
     session_append(
-        f"AUTO-DISPATCH → {task_id}: {title} → @Hermes (to route to @{dept_head})",
+        f"AUTO-DISPATCH → {task_id}: {title} → @Hermes → @{dept_head} ({dept})",
         agent=from_agent or "System", kind="note"
     )
 
     return success({
-        "message": f"📬 Task {task_id} routed to @Hermes (COO) for routing to @{dept_head}",
+        "message": f"📬 Task {task_id} auto-routed through @Hermes to @{dept_head} ({dept})",
         "task_id": task_id,
-        "assigned_to": "Hermes",
-        "suggested_department": dept,
-        "suggested_head": dept_head,
+        "assigned_to": dept_head,
+        "department": dept,
+        "department_head": dept_head,
     })
 
 
@@ -581,7 +718,7 @@ def hermes_route(task_id: str, from_agent: str = "Hermes") -> McpResult:
     dept_head = get_department_head(dept)
 
     # Assign to department head
-    pick_result = task_pick(task_id, dept_head)
+    pick_result = task_pick(task_id, dept_head, bypass_gate=True)
     if not pick_result.ok:
         return fail(f"Could not assign to @{dept_head}: {pick_result.error}")
 
@@ -589,8 +726,9 @@ def hermes_route(task_id: str, from_agent: str = "Hermes") -> McpResult:
     try:
         from notify import notify_task_assigned
         notify_task_assigned(task_id, task["title"], dept_head, from_agent="Hermes")
-    except Exception:
-        pass
+    except Exception as e:
+        write_log("Dispatch", "Hermes", "notify_failed",
+                  {"task_id": task_id, "error": str(e)})
 
     # Record route from Hermes to dept head
     routes = load_routes()
