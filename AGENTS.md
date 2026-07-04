@@ -368,12 +368,13 @@ The Chain Runner makes agents work like sub-agents — launch once, they run unt
 
 **The flow:**
 ```
-/task "Add login page" feature
-  → Auto-dispatched to @Hephaestus ✓
+Talk to any agent → they create a task → board
+  → @Hermes (COO) receives automatically
+  → @Hermes routes to department head (e.g., @Hephaestus)
   → Chain Runner launches sub-agents:
        @Hephaestus → @Aurora → @Lead-Faro → @Sr-Hale → @Jr-Hawk
   → @Jr-Hawk writes the code (autonomously)
-  → Reports back up: Jr → Sr → Lead → Aurora → Hephaestus → CEO
+  → Reports back up: Jr → Sr → Lead → Aurora → Hephaestus → Hermes → CEO
   → Only stops if: "CEO, I need you to decide X"
 ```
 
@@ -480,11 +481,13 @@ WebForge remembers 4 things:
 - `/dispatch-chain [agent]` — Show chain of command for an agent or full org chart
 - `/dispatch-pending` — Show all tasks that haven't been routed yet
 
-**Auto-routing:** When a task is created with `/task`, it's automatically dispatched to the right department head:
+**Auto-routing:** When ANY agent creates a task, it goes to **@Hermes (COO)** first. Hermes reviews and routes to the right department head:
 - feature/bugfix/refactor → @Hephaestus (Build)
 - research/architecture → @Athena (Intelligence)
 - test/security → @Minos (Quality)
 - docs/content → @Thoth (Documentation)
+
+**Any agent can create a task.** You don't have to go through Hermes. Just tell any agent what you want and they'll create a task and post it to the board. Hermes will pick it up from there automatically.
 
 ### Notifications (The Phone System)
 - `/notifications` — Show all unread notifications across all agents

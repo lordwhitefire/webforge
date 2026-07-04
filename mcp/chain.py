@@ -134,25 +134,34 @@ def build_chain_plan(task_id: str, title: str, task_type: str,
     needs_ceo = False
     ceo_question = ""
 
+    # === ALL CHAINS START WITH HERMES ===
+    # Hermes is the COO. He reviews every task and routes to the department head.
+    plan = [
+        {"level": "coordinator", "agent": "Hermes",
+         "action": f"Review task and route to the right department head"},
+    ]
+    instructions = [
+        f"0. @Hermes (COO): Review task {task_id}. Determine which department handles it. "
+        f"Route with: WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/dispatch.py route {task_id}",
+    ]
+
     if dept == "intelligence":
-        # Intelligence chain: Athena → Probe/Odin → work → back up
-        plan = [
+        plan += [
             {"level": "director", "agent": "Athena",
              "action": f"Route to the right team member"},
             {"level": "team_member", "agent": "Probe or Odin",
              "action": f"Audit/research the codebase for: {title}"},
         ]
-        instructions = [
+        instructions += [
             f"1. @Athena (Director): Assign this task to the right team member. "
             f"If it's code auditing → Probe team. If it's research → Odin team.",
             f"2. @Probe or @Odin (Team Member): Do the actual work. "
             f"Audit the codebase, research best practices, or whatever the task requires.",
-            f"3. Report back up: Team member → Athena → you (CEO).",
+            f"3. Report back up: Team member → Athena → Hermes → CEO.",
         ]
 
     elif dept == "build":
-        # Build chain: Hephaestus → Aurora/Titan/Zephyr → Lead → Senior → Junior
-        plan = [
+        plan += [
             {"level": "director", "agent": "Hephaestus",
              "action": f"Determine which team: frontend (Aurora), backend (Titan), or database (Zephyr)"},
             {"level": "team_head", "agent": "Aurora/Titan/Zephyr",
@@ -164,40 +173,40 @@ def build_chain_plan(task_id: str, title: str, task_type: str,
             {"level": "junior", "agent": "Junior Dev",
              "action": f"DO THE WORK — write the code"},
         ]
-        instructions = [
+        instructions += [
             f"1. @Hephaestus (Director): Decide which team this goes to "
             f"(frontend/Aurora, backend/Titan, or database/Zephyr).",
             f"2. @Aurora/Titan/Zephyr (Team Head): Route to the tech lead.",
             f"3. @Lead-Faro/Terra/Zen (Tech Lead): Route to the right senior.",
             f"4. @Senior Dev: Review the task, assign to the right junior.",
             f"5. @Junior Dev: Write the actual code.",
-            f"6. Report back up: Junior → Senior → Tech Lead → Team Head → Director → CEO.",
+            f"6. Report back up: Junior → Senior → Tech Lead → Team Head → Director → Hermes → CEO.",
         ]
 
     elif dept == "quality":
-        plan = [
+        plan += [
             {"level": "director", "agent": "Minos",
              "action": f"Run quality checks, or assign to Pixel/Scalpel/Janus team"},
             {"level": "team", "agent": "Test Team",
              "action": f"Execute tests, security scans, etc."},
         ]
-        instructions = [
+        instructions += [
             f"1. @Minos (Director): Decide what checks are needed.",
             f"2. @Pixel/Scalpel/Janus: Run the actual tests.",
-            f"3. Report back: Team → Minos → CEO.",
+            f"3. Report back: Team → Minos → Hermes → CEO.",
         ]
 
     elif dept == "documentation":
-        plan = [
+        plan += [
             {"level": "director", "agent": "Thoth",
              "action": f"Assign to the right doc agent"},
             {"level": "writer", "agent": "Quill/Scroll/Ledger",
              "action": f"Write the actual documentation"},
         ]
-        instructions = [
+        instructions += [
             f"1. @Thoth (Director): Assign to the right doc agent.",
             f"2. @Quill/Scroll/Ledger: Write the docs.",
-            f"3. Report back: Writer → Thoth → CEO.",
+            f"3. Report back: Writer → Thoth → Hermes → CEO.",
         ]
 
     else:

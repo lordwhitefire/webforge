@@ -164,14 +164,14 @@ def notify(agent_name: str, event: str, message: str, task_id: str = "",
 # ── Notify on task created ──
 def notify_task_created(task_id: str, title: str, task_type: str,
                         from_agent: str = "Hermes") -> McpResult:
-    """When a task is created, notify the relevant department director."""
+    """When a task is created, notify Hermes (COO) — he coordinates routing."""
     dept = TASK_TYPE_TO_DEPT.get(task_type, "build")
     director = DEPARTMENT_DIRECTORS.get(dept, "Hephaestus")
 
     return notify(
-        agent_name=director,
+        agent_name="Hermes",
         event="TASK_CREATED",
-        message=f"New task {task_id}: {title} (type: {task_type}). Check the board with /tasks.",
+        message=f"New task {task_id}: {title} (type: {task_type}). Suggested route: @{director} ({dept}). Route with: /dispatch-route {task_id}",
         task_id=task_id,
         from_agent=from_agent,
     )

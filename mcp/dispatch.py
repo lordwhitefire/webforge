@@ -493,11 +493,131 @@ def show_chain(agent_name: str = "") -> McpResult:
     return success({"message": "\n".join(lines)})
 
 
-# ── Auto-dispatch on task creation ──
+# ── Auto-dispatch on task creation — routes to Hermes first ──
 def auto_dispatch(task_id: str, task_type: str, title: str,
-                  from_agent: str = "Hermes") -> McpResult:
-    """Called automatically when a task is created. Routes to the right department."""
-    return route_task(task_id, from_agent=from_agent)
+                  from_agent: str = "Agent") -> McpResult:
+    """
+    Called automatically when a task is created by ANY agent.
+    Routes the task to Hermes (COO) who then routes to the right department head.
+    """
+    # Route to Hermes — he's the central coordinator
+    sys.path.insert(0, str(Path(__file__).parent))
+    from task import load_board, find_task, task_pick
+
+    board = load_board()
+    task = find_task(board, task_id)
+    if not task:
+        return fail(f"Task not found: {task_id}")
+
+    # Assign to Hermes
+    pick_result = task_pick(task_id, "Hermes")
+    if not pick_result.ok:
+        return fail(f"Could not assign to Hermes: {pick_result.error}")
+
+    # Notify Hermes
+    try:
+        from notify import notify
+        dept = get_department(task_type)
+        dept_head = get_department_head(dept)
+        notify(
+            agent_name="Hermes",
+            event="TASK_CREATED",
+            message=f"New task {task_id} from @{from_agent}: {title} (type: {task_type}). Route to @{dept_head} with: /dispatch-route {task_id}",
+            task_id=task_id,
+            from_agent=from_agent or "System",
+        )
+    except Exception:
+        pass
+
+    # Record route to Hermes
+    routes = load_routes()
+    route = {
+        "task_id": task_id,
+        "title": title,
+        "type": task_type,
+        "routed_from": from_agent or "System",
+        "routed_to": "Hermes",
+        "status": "pending_routing",
+        "routed_at": utc_now(),
+        "chain_position": "hermes_inbox",
+    }
+    routes["routes"].append(route)
+    save_routes(routes)
+
+    dept = get_department(task_type)
+    dept_head = get_department_head(dept)
+
+    session_append(
+        f"AUTO-DISPATCH → {task_id}: {title} → @Hermes (to route to @{dept_head})",
+        agent=from_agent or "System", kind="note"
+    )
+
+    return success({
+        "message": f"📬 Task {task_id} routed to @Hermes (COO) for routing to @{dept_head}",
+        "task_id": task_id,
+        "assigned_to": "Hermes",
+        "suggested_department": dept,
+        "suggested_head": dept_head,
+    })
+
+
+# ── Hermes routes to department head ──
+def hermes_route(task_id: str, from_agent: str = "Hermes") -> McpResult:
+    """
+    Hermes routes a task from his inbox to the right department head.
+    This is called after Hermes reviews a task.
+    """
+    # Determine department and route
+    sys.path.insert(0, str(Path(__file__).parent))
+    from task import load_board, find_task, task_pick
+
+    board = load_board()
+    task = find_task(board, task_id)
+    if not task:
+        return fail(f"Task not found: {task_id}")
+
+    task_type = task.get("type", "feature")
+    dept = get_department(task_type)
+    dept_head = get_department_head(dept)
+
+    # Assign to department head
+    pick_result = task_pick(task_id, dept_head)
+    if not pick_result.ok:
+        return fail(f"Could not assign to @{dept_head}: {pick_result.error}")
+
+    # Notify department head
+    try:
+        from notify import notify_task_assigned
+        notify_task_assigned(task_id, task["title"], dept_head, from_agent="Hermes")
+    except Exception:
+        pass
+
+    # Record route from Hermes to dept head
+    routes = load_routes()
+    route = {
+        "task_id": task_id,
+        "title": task["title"],
+        "routed_from": "Hermes",
+        "routed_to": dept_head,
+        "department": dept,
+        "status": "routed",
+        "routed_at": utc_now(),
+        "chain_position": "hermes_to_dept",
+    }
+    routes["routes"].append(route)
+    save_routes(routes)
+
+    session_append(
+        f"HERMES ROUTE → {task_id}: {task['title']} → @{dept_head} ({dept})",
+        agent="Hermes", kind="note"
+    )
+
+    return success({
+        "message": f"📬 Hermes routed task {task_id} to @{dept_head} ({dept})",
+        "task_id": task_id,
+        "routed_to": dept_head,
+        "department": dept,
+    })
 
 
 # ── CLI ──
