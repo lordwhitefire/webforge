@@ -259,6 +259,30 @@
     "read-notifications": {
       "description": "✅ Mark an agent's notifications as read. Usage: /read-notifications <agent-name>",
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/notify.py read \"$1\""
+    },
+    "dispatch": {
+      "description": "📬 Show routing status for a task. Usage: /dispatch <task-id>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/dispatch.py status \"$1\""
+    },
+    "dispatch-route": {
+      "description": "📬 Route a task to its department head. Usage: /dispatch-route <task-id>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/dispatch.py route \"$1\""
+    },
+    "dispatch-down": {
+      "description": "📬 Route a task DOWN to a specific agent. Usage: /dispatch-down <task-id> <agent-name>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/dispatch.py route-down \"$1\" \"$2\""
+    },
+    "dispatch-up": {
+      "description": "📬 Route results UP the chain. Usage: /dispatch-up <task-id> <from-agent>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/dispatch.py route-up \"$1\" \"$2\""
+    },
+    "dispatch-chain": {
+      "description": "🔗 Show chain of command for an agent. Usage: /dispatch-chain [agent-name]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/dispatch.py chain \"$1\""
+    },
+    "dispatch-pending": {
+      "description": "📬 Show all tasks that haven't been routed yet.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/dispatch.py pending"
     }
   },
   "mcp": {}

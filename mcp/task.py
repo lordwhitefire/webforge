@@ -122,6 +122,13 @@ def task_create(title: str, task_type: str = "feature", area: str = "",
     except:
         pass  # Notify module not available, skip
 
+    # ── AUTO-DISPATCH (route to the right department head) ──
+    try:
+        from dispatch import auto_dispatch
+        auto_dispatch(task_id, task_type, title, from_agent="Developer")
+    except:
+        pass  # Dispatch module not available, skip
+
     return success({"task": task, "id": task_id})
 
 

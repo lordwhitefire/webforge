@@ -443,6 +443,25 @@ WebForge remembers 4 things:
 - `/bugs` — List all open bugs
 - `/review <task-id>` — Generate code review checklist
 
+### Dispatch & Routing (Chain of Command)
+- `/dispatch <task-id>` — Show routing status for a task (who it went to, who has it now)
+- `/dispatch-route <task-id>` — Route a task to its department head (auto-detected from task type)
+- `/dispatch-down <task-id> <agent>` — Route a task DOWN to a specific agent (e.g., head → senior → junior)
+- `/dispatch-up <task-id> <from-agent>` — Route results UP the chain (junior → senior → head → CEO)
+- `/dispatch-chain [agent]` — Show chain of command for an agent or full org chart
+- `/dispatch-pending` — Show all tasks that haven't been routed yet
+
+**Auto-routing:** When a task is created with `/task`, it's automatically dispatched to the right department head:
+- feature/bugfix/refactor → @Hephaestus (Build)
+- research/architecture → @Athena (Intelligence)
+- test/security → @Minos (Quality)
+- docs/content → @Thoth (Documentation)
+
+### Notifications (The Phone System)
+- `/notifications` — Show all unread notifications across all agents
+- `/inbox <agent-name>` — Show one agent's inbox
+- `/read-notifications <agent-name>` — Mark notifications as read
+
 ### Documentation (Docs as Code — replaces 60-agent Thoth)
 - `/readme` — Generate README from project state → `.webforge/docs/`
 - `/changelog` — Generate changelog from git history (Keep a Changelog format)
