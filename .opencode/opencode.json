@@ -219,6 +219,22 @@
     "docs": {
       "description": "Generate ALL documentation (README, changelog, API docs, env docs, onboarding) at once.",
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/docs.py all"
+    },
+    "standup": {
+      "description": "🏃 Daily standup — what we did, what we're doing, what's blocked. Suggested next action.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/standup.py run"
+    },
+    "escalate": {
+      "description": "📤 Escalate a question to the developer (CEO). Law 5: No Inference. Usage: /escalate <question>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/escalate.py ask \"$1\""
+    },
+    "answer": {
+      "description": "✅ Answer an escalated question. Usage: /answer <escalation-id> <your answer>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/escalate.py answer \"$1\" \"$2\""
+    },
+    "escalations": {
+      "description": "List all open escalations (questions waiting for your answer).",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/escalate.py list"
     }
   },
   "mcp": {}

@@ -1,36 +1,88 @@
-# CEO
+# CEO — You (The Developer)
 
-## Who I Am
-I am the CEO. I am the bridge between the developer (you) and the WebForge system.
+## Who You Are
+You are the CEO. You are the developer. You set the priorities, make the decisions, and decide what to build and what NOT to build.
 
-## My Job
-I make final decisions and keep the developer in control.
+**CEO is NOT an AI agent. CEO is YOU.** Hermes is the COO who helps you coordinate.
 
-## What I Do
-1. I receive questions from agents (through Hermes).
-2. I bring those questions to the developer.
-3. I send the developer's answers back to the agents.
-4. I approve major steps: starting a project, starting build, launching.
-5. I review the Intelligence team's findings before Build starts.
-6. I do the final review before launch.
+## Your Job
 
-## What I Do NOT Do
-- I do not write code.
-- I do not test code.
-- I do not make decisions without asking the developer (Law 5).
-- I do not skip steps in the pipeline.
+### 1. Set Priorities
+- Create tasks: `/task "description" type area effort`
+- Decide what to work on: `/build` → approve or reject
+- Decide what NOT to do: `/task-reject` or just don't create it
 
-## Laws I Follow
-- Law 5: No inference. Ever. If unsure, I ask the developer.
-- Law 6: Real-time documentation. The CEO Communication MCP records everything.
+### 2. Make Decisions (Law 5: No Inference)
+- When the AI escalates: `/escalations` → see open questions
+- Answer: `/answer <id> <your answer>`
+- The AI will NEVER guess — it asks you
 
-## My MCPs
-- CEO Communication MCP — my bridge to the developer.
+### 3. Review Work
+- Review RFCs: `/rfc <task-id>` → `/rfc-approve` or `/rfc-reject`
+- Run quality checks: `/check <task-id>`
+- Code review: `/review <task-id>`
+- Override failed checks: `/check-approve <task-id> "reason"`
 
-## When I Am Called
-- Hermes calls me when a decision is needed.
-- Hermes calls me at end of Intelligence phase for review.
-- Hermes calls me at end of Build for final review.
+### 4. Set Rules (Meta Engineering)
+- Correct the AI: `/correct <wrong> | <right>`
+- Add rules: `/add-rule "rule text"`
+- Add preferences: `/add-preference "preference"`
+- Rules are permanent — they apply to ALL future sessions
 
-## How I Talk
-Simple. Direct. I never assume. I always ask.
+### 5. Track Progress
+- Standup: `/standup` — see what's done, doing, blocked
+- Resume: `/resume` — full memory + standup (start of every session)
+- Board: `/tasks` — see the Kanban board
+- Bugs: `/bugs` — see open bugs
+
+### 6. Document Decisions
+- ADRs: `/add-adr "title" | "context" | "decision"`
+- Knowledge: `/knowledge-add "topic" | "content" [category]`
+- Generated docs: `/readme`, `/changelog`, `/api-docs`, `/env-docs`, `/onboard`
+
+## What You Do NOT Do
+- You do NOT run a pipeline (there isn't one — it's Kanban now)
+- You do NOT follow a fixed process
+- You do NOT let the AI infer your decisions (Law 5)
+- You do NOT write manual documentation (it's auto-generated)
+
+## Your Daily Flow
+
+### Start of Session
+```
+/resume    ← loads all memory + runs standup
+```
+
+### Working
+```
+/build              ← see proposed task
+/task-approve 001   ← approve
+                    ← AI works on it
+/check 001          ← run quality checks
+/task-done 001      ← mark done
+```
+
+### When AI Needs a Decision
+```
+/escalate "Should we use Paystack or Stripe?"
+                    ← AI asks you
+/answer esc-001 "Use Paystack for Nigeria, Stripe for international"
+                    ← you answer, AI proceeds
+```
+
+### When AI Does Something Wrong
+```
+/correct "using localStorage for auth | use httpOnly cookies"
+                    ← becomes a permanent rule, never happens again
+```
+
+### End of Session
+```
+/stop "Was working on cart total. Next: add batch upload tests."
+                    ← saves where you stopped
+```
+
+### Come Back Tomorrow
+```
+/resume    ← picks up exactly where you stopped
+```

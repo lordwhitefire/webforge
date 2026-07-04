@@ -359,8 +359,19 @@ def cmd_resume() -> int:
                 print(f"  - {t.stem}")
 
     print("\n" + "=" * 60)
-    print("RESUME COMPLETE — continue from where you stopped")
+    print("RESUME COMPLETE — memory loaded.")
     print("=" * 60)
+
+    # ── Now run standup (option C: resume calls standup at the end) ──
+    print("\n")
+    try:
+        from standup import standup_run
+        standup_result = standup_run()
+        if standup_result.ok:
+            print(standup_result.data.get("output", ""))
+    except Exception as e:
+        print(f"(Standup not available: {e})")
+
     return 0
 
 

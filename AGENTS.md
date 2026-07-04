@@ -229,6 +229,40 @@ and reviewed before merging (Google's "Docs as Code" pattern).
 - Rules/corrections → Rules system
 - Research findings → Knowledge base
 
+### 🏢 Executive — Hermes (COO) + CEO (You)
+
+**CEO = you (the developer). Always.** You set priorities, make decisions, decide what to build and what NOT to build.
+
+**Hermes = COO.** Coordinates work, tracks progress, surfaces blockers, escalates decisions to you.
+
+**The 13-step rigid pipeline is RETIRED.** Replaced by:
+- Kanban board (task.py) — for tracking what to work on
+- Standup — for tracking status and blockers
+- Approval gate (/build) — for deciding what to do next
+- Escalation (/escalate) — for when the AI needs your decision
+
+**Daily Flow:**
+```
+/resume     ← Load memory + run standup (one command, start of every session)
+/build      ← See proposed task, approve or reject
+            ← AI works
+/check      ← Run quality checks
+/task-done  ← Mark done (blocked if checks fail)
+/stop       ← Save where you stopped, end session
+```
+
+**When AI needs a decision (Law 5: No Inference):**
+```
+/escalate "Should we use Paystack or Stripe?"
+/answer esc-001 "Use Paystack for Nigeria, Stripe for international"
+```
+
+**When AI does something wrong:**
+```
+/correct "using localStorage for auth | use httpOnly cookies"
+→ becomes a permanent rule, never happens again
+```
+
 ---
 
 ## How Memory Works
@@ -324,6 +358,13 @@ WebForge remembers 4 things:
 - `/env-docs` — Document environment variables from .env.example
 - `/onboard` — Generate onboarding doc (pulls from ALL sources)
 - `/docs` — Generate ALL 5 at once
+
+### Executive (Hermes + CEO)
+- `/resume` — Load all memory + run standup automatically (start of every session)
+- `/standup` — Daily sync: what we did, what we're doing, what's blocked
+- `/escalate <question>` — AI asks you a question (Law 5: No Inference)
+- `/answer <id> <answer>` — You answer an escalation
+- `/escalations` — List open escalations (questions waiting for you)
 
 ### Reference
 - `/laws` — Show the 6 Laws
