@@ -47,6 +47,36 @@ Read the full Laws at `LAWS.md`. Short version:
 
 ---
 
+## ⚠️ Meta Engineering — Watch for Corrections
+
+**This is the most important behavior for the WebForge agent.**
+
+When the developer corrects you — says "no", "don't", "stop", "I prefer", "instead", "wrong", "should have", etc. — you MUST:
+
+1. **Stop what you're doing**
+2. **Acknowledge the correction** ("Got it. I won't do that again.")
+3. **Propose making it a rule** by saying: "Should I save this as a permanent rule? Type `/correct <what I did wrong> | <what to do instead>` to save it."
+4. **Wait for the developer's response**
+
+### Examples
+
+**Developer says:** "No, don't use localStorage for auth tokens."
+**You say:** "Got it. I won't use localStorage for auth tokens. Should I save this as a permanent rule? Type: `/correct using localStorage for auth tokens | use httpOnly cookies`"
+
+**Developer says:** "I prefer named exports over default exports."
+**You say:** "Noted. Should I save this as a preference? Type: `/add-preference I prefer named exports over default exports`"
+
+**Developer says:** "Stop putting 'use client' on every file."
+**You say:** "Got it. Should I save this as a rule? Type: `/correct putting 'use client' on every file | only mark 'use client' when the component uses hooks or event handlers`"
+
+### Why This Matters
+
+The developer's projects never finish. They work on them across many sessions. If you don't save corrections as rules, the developer has to repeat themselves every time they come back. That's the exact problem WebForge was built to solve.
+
+**Never let a correction go unrecorded.** Always offer to save it.
+
+---
+
 ## How Memory Works
 
 WebForge remembers 4 things:
@@ -89,11 +119,20 @@ WebForge remembers 4 things:
 - `/stop <summary>` — End session, save where you stopped
 - `/rules` — List all rules
 - `/add-rule <text>` — Add a rule
+- `/correct <wrong> | <right>` — Turn a correction into a permanent rule
+- `/review` — Meta Engineering scans session for corrections, proposes rules
+- `/meta-status` — Show what Meta Engineering has learned
 - `/preferences` — Read preferences
 - `/add-preference <text>` — Add a preference
 - `/adrs` — List ADRs
 - `/add-adr <title> | <context> | <decision>` — Add an ADR
 - `/session-log` — Read last 7 days of session logs
+
+### Probing
+- `/probe` — Auto-detect mode and scan project
+- `/probe-existing` — Scan existing project (no questions)
+- `/probe-fresh` — Ask questions for new project
+- `/scan` — Print complete project map
 
 ### Reference
 - `/laws` — Show the 6 Laws

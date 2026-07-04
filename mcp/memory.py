@@ -203,6 +203,57 @@ def add_rule(rule_text: str, scope: str = "project", source: str = "developer") 
     return success({"file": filepath.name, "scope": scope, "rule": rule_text})
 
 
+def add_correction(wrong: str, right: str, scope: str = "project") -> McpResult:
+    """
+    Meta Engineering: Turn a correction into a permanent rule.
+
+    When the developer says "don't do X, do Y instead", this function:
+    1. Generates a rule from the correction
+    2. Saves it to rules/
+    3. Logs the correction to session log
+    4. Records it in system-memory for Meta Engineering to learn from
+
+    Args:
+        wrong: What the AI did wrong (e.g. "using localStorage for auth tokens")
+        right: What it should do instead (e.g. "use httpOnly cookies")
+        scope: 'project' or 'global'
+    """
+    # Generate the rule text — always include both what's wrong and what's right
+    right_cap = right[0].upper() + right[1:] if right else ""
+    rule_text = f"Never {wrong}. {right_cap}."
+
+    # Add the rule
+    result = add_rule(rule_text, scope=scope, source="correction")
+
+    # Log the correction specifically
+    session_append(
+        f"CORRECTION — Wrong: {wrong} → Right: {right} → Rule: {rule_text}",
+        agent="Meta-Engineering",
+        kind="correction"
+    )
+
+    # Write to system-memory (Meta Engineering's own log)
+    try:
+        sys_mem = Path.home() / "webforge" / "system-memory"
+        sys_mem.mkdir(parents=True, exist_ok=True)
+        corrections_log = sys_mem / "corrections.md"
+        if not corrections_log.exists():
+            corrections_log.write_text("# Meta Engineering — Corrections Log\n\nRules learned from developer corrections.\n\n---\n\n")
+
+        with corrections_log.open("a", encoding="utf-8") as f:
+            f.write(f"- **[{utc_now()}]** Wrong: {wrong} → Right: {right} → Rule: {rule_text}\n")
+    except:
+        pass
+
+    return success({
+        "rule": rule_text,
+        "wrong": wrong,
+        "right": right,
+        "scope": scope,
+        "rule_file": result.data.get("file"),
+    })
+
+
 def list_rules(scope: str = "all") -> McpResult:
     """List all rules."""
     rules = []
@@ -369,6 +420,7 @@ if __name__ == "__main__":
         print()
         print("Rules:")
         print("  add-rule <rule> [scope] [source]")
+        print("  add-correction <wrong> | <right> [scope]  — turn a correction into a rule")
         print("  list-rules [scope]")
         print("  read-rules")
         print()
@@ -403,6 +455,18 @@ if __name__ == "__main__":
         scope = sys.argv[3] if len(sys.argv) > 3 else "project"
         source = sys.argv[4] if len(sys.argv) > 4 else "developer"
         print(add_rule(rule, scope, source).to_dict())
+    elif cmd == "add-correction":
+        # Usage: add-correction <wrong> | <right> [scope]
+        # The | splits wrong from right
+        raw = sys.argv[2] if len(sys.argv) > 2 else ""
+        parts = raw.split("|")
+        if len(parts) >= 2:
+            wrong = parts[0].strip()
+            right = parts[1].strip()
+            scope = parts[2].strip() if len(parts) > 2 else "project"
+            print(add_correction(wrong, right, scope).to_dict())
+        else:
+            print("Usage: add-correction <wrong> | <right> [scope]")
     elif cmd == "list-rules":
         scope = sys.argv[2] if len(sys.argv) > 2 else "all"
         print(list_rules(scope).to_dict())
