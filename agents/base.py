@@ -230,51 +230,63 @@ class Agent:
 
     def ask_ai(self, instruction: str, response_format: str = "") -> dict:
         """
-        Call the AI directly via HTTP API (DeepSeek or Z.ai).
+        Call the AI via OpenCode CLI.
 
-        SYNCHRONOUS — blocks until the AI responds. No pipeline handoff,
-        no file writing, no resume needed.
+        PRINCIPLE: The script is the body. OpenCode is the brain.
+        No API key needed — OpenCode uses whatever model is configured
+        (free models work).
 
-        The AI is just the brain. The script calls it, gets the answer,
-        and continues executing. No handoff.
+        The script calls `opencode run "prompt"` which returns the AI's
+        response. The script then parses it and decides what to do.
 
         Args:
             instruction: What the AI needs to reason about
             response_format: Optional format hint (appended to instruction)
 
         Returns:
-            dict parsed from AI's JSON response (keys: status, action, target, message, etc.)
+            dict parsed from AI's response
         """
-        from ai_client import call_ai_json
+        from ai_client import ask_opencode
 
         skill = self._load_skill()
 
-        # Build the system prompt: who the AI is, what its role is
-        system_prompt = (
+        # Build the full prompt for OpenCode
+        # This is what OpenCode's LLM will see
+        full_prompt = (
             f"You are {self.name}. {self.department} department.\n\n"
-            f"Your role (from skill file):\n{skill[:2000]}\n\n"
-            f"Respond with a JSON object containing the fields requested.\n"
-            f"Never suggest actions outside your role. Stay in character.\n"
-            f"Be concise and direct."
+            f"Your role:\n{skill[:1500]}\n\n"
+            f"Task: {instruction}\n"
         )
-
-        # Build the user instruction
-        user_parts = [instruction]
         if response_format:
-            user_parts.append(f"\n\nExpected response format:\n{response_format}")
-        user_parts.append(
-            "\n\nRespond with valid JSON only. No markdown, no code fences, "
-            "no extra explanation outside the JSON."
+            full_prompt += f"\nExpected format:\n{response_format}\n"
+        full_prompt += (
+            "\nRespond with valid JSON only. No markdown, no code fences.\n"
+            "Never suggest actions outside your role. Stay in character."
         )
-        user_instruction = "\n".join(user_parts)
 
-        # Call the AI directly (blocking)
-        response = call_ai_json(
-            system_prompt=system_prompt,
-            user_instruction=user_instruction,
-            temperature=0.3,
-            max_tokens=2000,
-        )
+        # Call OpenCode (blocking — waits for AI response)
+        result = ask_opencode(full_prompt, timeout=120)
+
+        if result["status"] != "ok":
+            return {
+                "status": "error",
+                "message": result.get("error", "OpenCode call failed"),
+                "action": "",
+            }
+
+        # Parse the AI's response
+        response_text = result["response"]
+
+        # Try to parse as JSON
+        try:
+            response = json.loads(response_text)
+        except:
+            # If not JSON, wrap it
+            response = {
+                "status": "ok",
+                "message": response_text,
+                "action": "respond",
+            }
 
         # Log the AI interaction
         self._log(f"ask_ai → {self.name}: {instruction[:100]}...")
