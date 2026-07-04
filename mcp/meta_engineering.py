@@ -194,29 +194,92 @@ def review() -> McpResult:
 
 def learn() -> McpResult:
     """
-    Future: Review all corrections and update skill files automatically.
-    For now, just reports what would be done.
+    Auto-learn from corrections: detect correction → write check file → register it.
+    
+    This is the REAL Meta Engineering loop:
+    1. Scan session log for corrections (wrong → right patterns)
+    2. For each unprocessed correction:
+       a. Generate a Python check file in .webforge/checks/
+       b. The check file has a check(project_root) function
+       c. The check runs automatically on every /task-done
+       d. If it fails, the task is ACTUALLY blocked (lock file)
+    3. Report what was learned
     """
-    corrections = find_corrections_in_session(30)  # Last 30 days
-    new = [c for c in corrections if not c["already_processed"]]
+    corrections = find_corrections_in_session(30)
+    # DON'T filter by already_processed — we want to generate check files
+    # for ALL corrections, even ones that already have .md rule files.
+    # The check file is DIFFERENT from the rule file.
+    all_corrections = corrections  # Use all, not just "new"
 
     print("=" * 60)
-    print("META ENGINEERING — LEARN MODE")
+    print("META ENGINEERING — LEARN MODE (auto-generating check files)")
     print("=" * 60)
     print()
-    print(f"Found {len(new)} unprocessed corrections in last 30 days.")
-    print()
-    if new:
-        print("These would be turned into rules and added to skill files:")
-        for c in new:
-            print(f"  - {c['entry'][:100]}")
-    else:
-        print("No unprocessed corrections. All corrections have been turned into rules.")
-    print()
-    print("NOTE: Auto-learning is not implemented yet.")
-    print("Use /review to see corrections, then /correct to create rules manually.")
 
-    return success({"unprocessed": len(new), "auto_learn": False})
+    if not all_corrections:
+        print("✅ No corrections found. Nothing to learn from.")
+        return success({"corrections": 0, "auto_learn": True, "checks_generated": 0})
+
+    # Import the enforcement engine
+    try:
+        from enforce import generate_check_file, discover_checks
+    except ImportError:
+        print("❌ enforce.py not available. Cannot auto-generate check files.")
+        return fail("Enforcement engine not available")
+
+    # Get existing checks to avoid duplicates
+    existing_checks = discover_checks()
+    existing_hashes = set(c["name"].replace("check_", "") for c in existing_checks)
+
+    checks_generated = 0
+    import hashlib
+
+    for c in all_corrections:
+        entry = c["entry"]
+        # Parse the correction from the session log entry
+        # Format: CORRECTION — Wrong: X → Right: Y → Rule: Z
+        import re
+        wrong_match = re.search(r'Wrong:\s*(.+?)\s*→', entry)
+        right_match = re.search(r'Right:\s*(.+?)\s*→', entry)
+        rule_match = re.search(r'Rule:\s*(.+?)(?:\s*$)', entry)
+
+        if not wrong_match or not right_match:
+            continue
+
+        wrong = wrong_match.group(1).strip()
+        right = right_match.group(1).strip()
+        rule = rule_match.group(1).strip() if rule_match else f"Never {wrong}. {right}."
+
+        # Check if we already have a check for this rule
+        rule_hash = hashlib.md5(rule.encode()).hexdigest()[:8]
+        if rule_hash in existing_hashes:
+            print(f"  ⏭️  Check already exists for: {rule[:60]}")
+            continue
+
+        # Generate the check file
+        result = generate_check_file(rule, wrong, right)
+        if result.ok:
+            checks_generated += 1
+            print(f"  ✅ Generated: {result.data.get('file', 'unknown')}")
+            print(f"     Rule: {rule[:80]}")
+            print(f"     Searches for: {', '.join(result.data.get('search_terms', []))}")
+            print()
+
+    # Log what we learned
+    session_append(
+        f"META ENGINEERING LEARNED — Generated {checks_generated} enforcement check file(s) from corrections.",
+        agent="Daedalus", kind="decision"
+    )
+
+    print(f"📊 Summary: {checks_generated} enforcement check file(s) generated.")
+    print(f"   These will run automatically on every /task-done.")
+    print(f"   If a check fails, the task is ACTUALLY blocked (lock file).")
+
+    return success({
+        "corrections": len(all_corrections),
+        "auto_learn": True,
+        "checks_generated": checks_generated,
+    })
 
 
 def status() -> McpResult:

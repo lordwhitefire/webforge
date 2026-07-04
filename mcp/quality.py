@@ -46,7 +46,10 @@ def detect_project_type(project_root: Path) -> dict:
     """Detect what kind of project this is and what tools to use."""
     pkg_path = project_root / "package.json"
     if not pkg_path.exists():
-        return {"type": "unknown", "tools": {}}
+        return {"type": "unknown", "tools": {
+            "lint_cmd": None, "typecheck_cmd": None, "test_cmd": None,
+            "build_cmd": None, "security_cmd": None,
+        }, "scripts": []}
 
     try:
         pkg = json.loads(pkg_path.read_text())
@@ -222,6 +225,48 @@ def check_run(task_id: str = "") -> McpResult:
         "all_passed": all_passed,
     }
 
+    # ── ALSO RUN ENFORCEMENT CHECKS ──
+    enforce_checks = []
+    enforce_passed = True
+    try:
+        from enforce import run_all_checks, write_lock, remove_lock
+        enforce_result = run_all_checks(str(project_root))
+        enforce_checks = enforce_result.data.get("checks", [])
+        enforce_passed = enforce_result.data.get("all_passed", True)
+
+        if enforce_checks:
+            lines.append("")
+            lines.append("🛡️ ENFORCEMENT CHECKS")
+            for ec in enforce_checks:
+                emoji = "✓" if ec["passed"] else "✗"
+                lines.append(f"  {emoji} {ec['name']}: {ec['message']}")
+
+            if not enforce_passed:
+                all_passed = False
+                failed += len([ec for ec in enforce_checks if not ec["passed"]])
+    except ImportError:
+        pass
+
+    # Combine results
+    check_result["enforcement_checks"] = enforce_checks
+    check_result["all_passed"] = all_passed and enforce_passed
+
+    # ── WRITE LOCK FILE IF FAILED ──
+    if task_id and not all_passed:
+        try:
+            from enforce import write_lock
+            failed_list = [c for c in checks if c["status"] == "failed"]
+            failed_list.extend([ec for ec in enforce_checks if not ec.get("passed", True)])
+            write_lock(task_id, failed_list)
+        except ImportError:
+            pass
+    elif task_id and all_passed:
+        try:
+            from enforce import remove_lock
+            remove_lock(task_id)
+        except ImportError:
+            pass
+
     # Save to .webforge for reference
     check_dir = project_root / ".webforge" / "checks"
     check_dir.mkdir(parents=True, exist_ok=True)
@@ -229,7 +274,8 @@ def check_run(task_id: str = "") -> McpResult:
     check_file.write_text(json.dumps(check_result, indent=2))
 
     write_log("Quality", "Minos", "check_run",
-              {"task_id": task_id, "passed": passed, "failed": failed})
+              {"task_id": task_id, "passed": passed, "failed": failed,
+               "enforcement_passed": enforce_passed})
 
     return success({
         "check_result": check_result,
@@ -264,28 +310,41 @@ def check_approve(task_id: str, reason: str = "") -> McpResult:
 
 # ── Check if task is approved (passed checks OR override given) ──
 def is_quality_approved(task_id: str) -> bool:
-    """Check if a task has passed quality checks or has an override."""
+    """
+    Check if a task has passed quality checks or has an override.
+    
+    FIX: Default is now FALSE (blocked until proven passing).
+    Previously returned True if no checks had ever run — that meant
+    a task could be marked done with zero testing.
+    """
     project_root = get_project_root()
     check_dir = project_root / ".webforge" / "checks"
 
-    # Check if override exists (in session log)
-    # For simplicity: if check_approve was called, it's in the session log
-    # We check the last check result
+    # Check for override (developer said "I know, mark it done anyway")
+    override_file = check_dir / f"{task_id}-override.json"
+    if override_file.exists():
+        return True
+
+    # Check for enforcement lock file (enforce.py wrote it)
+    try:
+        from enforce import is_locked
+        if is_locked(task_id):
+            return False  # Lock file exists — checks failed, blocked
+    except ImportError:
+        pass
+
+    # Check if quality checks have been run AND passed
     check_file = check_dir / f"{task_id}.json"
     if check_file.exists():
         result = json.loads(check_file.read_text())
         if result.get("all_passed"):
             return True
+        # Checks ran but failed — blocked
+        return False
 
-    # Check for override in a separate file
-    override_file = check_dir / f"{task_id}-override.json"
-    if override_file.exists():
-        return True
-
-    # No check run yet — allow (first time)
-    if not check_file.exists():
-        return True
-
+    # FIX: No checks have ever run → BLOCKED (not approved)
+    # Previously this returned True (allow first time) — that was the bug.
+    # Now: a task MUST have checks run before it can be marked done.
     return False
 
 
