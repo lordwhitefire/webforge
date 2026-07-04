@@ -382,8 +382,39 @@ Talk to any agent → they create a task → board
 - `/run-chain <task-id>` — Show the chain plan and execute it
 - `/chain-plan <task-id>` — Preview the chain without running
 
-**AI instruction:** When you see a task created + routed, call `/run-chain` automatically.
+**AI instruction — FOLLOW THE CHAIN STEP BY STEP:**
+When you see a task created + routed, call `/run-chain` automatically.
 Do NOT wait for the user to ask. The chain runs until done or stuck.
+
+**CRITICAL — You MUST follow the chain plan in order:**
+1. Start at the TOP of the chain — @Hermes is always step 0
+2. Do NOT skip levels. Do NOT jump to the executor.
+3. Each level must complete before the next starts:
+   - Step 0: @Hermes reviews → routes to department head
+   - Step 1: @Department Head reviews → routes down
+   - Step 2: @Tech Lead → @Senior → @Junior
+   - Final step: @Junior does the work
+4. After each level, report: "Level X done. Moving to level X+1."
+5. Only skip to the executor if the chain plan says it's a direct task (junior-level work).
+6. NEVER jump from CEO request straight to a junior agent. Always go through the chain.
+
+**Example of CORRECT behavior:**
+```
+/run-chain task-001
+→ Shows chain plan: @Hermes → @Athena → @Probe-Orion
+→ I execute step 0: @Hermes reviews task, routes to @Athena
+→ I execute step 1: @Athena reviews, assigns to @Probe-Orion
+→ I execute step 2: @Probe-Orion does the work
+→ Reports back: Probe-Orion → Athena → Hermes → CEO
+```
+
+**Example of WRONG behavior (what I did):**
+```
+/run-chain task-001
+→ I skip Hermes and Athena
+→ Jump straight to @Probe-Orion
+→ WRONG! Broke the chain of command.
+```
 
 ---
 
