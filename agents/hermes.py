@@ -39,7 +39,23 @@ class Hermes(Agent):
     """
     Hermes — COO / Coordinator
 
+    THE CEO'S SOLE POINT OF CONTACT.
+    The CEO does NOT talk to other agents for work routing.
+    The CEO talks to Hermes. Hermes talks to all other agents.
+
     The script controls the AI. The AI is the brain, Hermes is the body.
+
+    AUTONOMOUS OPERATION:
+    - The system runs autonomously. Agents work on their own.
+    - They only come to the CEO when they need human input:
+      a question, a decision, something they can't figure out.
+    - Hermes coordinates everything and reports to the CEO.
+
+    CORRECTION FLOW:
+    - CEO tells Hermes "correct agent X's behavior"
+    - Hermes routes to Daedalus
+    - Daedalus rewrites that agent's script with the correction in code
+    - The agent never makes that mistake again
     """
 
     name = "Hermes"
@@ -55,6 +71,8 @@ class Hermes(Agent):
         "answer_question",
         "route",
         "respond",
+        "correct_agent",  # CEO tells Hermes to correct an agent's behavior
+        "clone_project",  # CEO tells Hermes to clone a repo for the build team
     ]
 
     forbidden_actions = [
@@ -87,6 +105,12 @@ class Hermes(Agent):
 
         elif action == "answer_question":
             return self._handle_question(data)
+
+        elif action == "correct_agent":
+            return self._handle_correction(data)
+
+        elif action == "clone_project":
+            return self._handle_clone(data, context)
 
         elif action == "route":
             target = data.get("target", "")
@@ -337,6 +361,147 @@ class Hermes(Agent):
                 "message": f"Standup failed: {e}",
                 "next_step": None,
             }
+
+    # ── Handle correction request ──
+    # CEO says: "correct agent X — they did Y wrong, they should do Z instead"
+    # Hermes routes this to Daedalus, who rewrites that agent's script
+
+    def _handle_correction(self, data: dict) -> dict:
+        """
+        CEO wants to correct an agent's behavior.
+        Hermes routes to Daedalus to patch the agent's script.
+
+        Flow: CEO → Hermes → Daedalus → rewrites agent .py file
+        """
+        message = data.get("message", data.get("raw", ""))
+
+        # Ask AI to parse: which agent, what's wrong, what to do instead
+        ai_response = self.ask_ai(
+            f"The CEO wants to correct an agent's behavior.\n"
+            f"CEO's message: '{message}'\n\n"
+            f"Extract:\n"
+            f"AGENT: which agent name (e.g. hermes, hephaestus, jr-hawk)\n"
+            f"PATTERN: what pattern/behavior to block (e.g. 'localStorage', 'console.log')\n"
+            f"DESCRIPTION: why this is wrong\n\n"
+            f"Respond with:\n"
+            f"AGENT: <name>\n"
+            f"PATTERN: <pattern>\n"
+            f"DESCRIPTION: <description>"
+        )
+
+        agent_name = ai_response.get("agent", "")
+        pattern = ai_response.get("pattern", "")
+        description = ai_response.get("description", "")
+
+        if not agent_name or not pattern:
+            return {
+                "agent": self.name,
+                "action": "correct_agent",
+                "message": (
+                    f"I need to know which agent to correct and what behavior to block.\n"
+                    f"Example: 'correct hermes — stop suggesting localStorage, use httpOnly cookies instead'"
+                ),
+                "next_step": None,
+            }
+
+        # Route to Daedalus to patch the agent's script
+        try:
+            import sys
+            sys.path.insert(0, str(Path.home() / "webforge" / "agents"))
+            from daedalus import Daedalus
+            daedalus = Daedalus()
+            result = daedalus._add_rule({
+                "agent_name": agent_name,
+                "pattern": pattern,
+                "description": description,
+            })
+            return {
+                "agent": self.name,
+                "action": "correct_agent",
+                "corrected_agent": agent_name,
+                "message": (
+                    f"I've routed this correction to @Daedalus.\n"
+                    f"{result.get('message', 'Correction applied.')}\n\n"
+                    f"The agent @{agent_name} will never make this mistake again. "
+                    f"The correction is now permanently in their script."
+                ),
+                "next_step": None,
+            }
+        except Exception as e:
+            return {
+                "agent": self.name,
+                "action": "correct_agent",
+                "message": f"Failed to route correction to Daedalus: {e}",
+                "next_step": None,
+            }
+
+    # ── Handle clone project request ──
+    # CEO says: "clone this repo for the build team"
+    # Hermes routes to Hephaestus to do the cloning
+
+    def _handle_clone(self, data: dict, context: dict) -> dict:
+        """
+        CEO wants to clone a project/repo.
+        Hermes creates a task and routes to Hephaestus.
+        Hermes does NOT tell the CEO to talk to Hephaestus directly.
+        """
+        message = data.get("message", data.get("raw", ""))
+
+        # Ask AI to extract the repo URL
+        ai_response = self.ask_ai(
+            f"The CEO wants to clone a project.\n"
+            f"CEO's message: '{message}'\n\n"
+            f"Extract the repository URL.\n"
+            f"Respond with:\n"
+            f"REPO_URL: <url>\n"
+            f"DESCRIPTION: what the CEO wants to do with it"
+        )
+
+        repo_url = ai_response.get("repo_url", "")
+        description = ai_response.get("description", message)
+
+        if not repo_url:
+            return {
+                "agent": self.name,
+                "action": "clone_project",
+                "message": "I need a repository URL to clone. What's the repo URL?",
+                "next_step": None,
+            }
+
+        # Create a task for Hephaestus
+        task_result = self._create_task(
+            title=f"Clone repo: {repo_url}",
+            task_type="feature",
+            effort="S",
+        )
+
+        if "error" in task_result:
+            return {
+                "agent": self.name,
+                "action": "clone_project",
+                "message": f"Failed to create task: {task_result['error']}",
+                "next_step": None,
+            }
+
+        task_id = task_result.get("id", "unknown")
+
+        # Route to Hephaestus — Hermes does the talking, NOT the CEO
+        self._route_to("Hephaestus", f"Clone this repo: {repo_url}. {description}", task_id)
+
+        return {
+            "agent": self.name,
+            "action": "clone_project",
+            "task_id": task_id,
+            "routed_to": "Hephaestus",
+            "message": (
+                f"Got it. I've created {task_id} and routed it to @Hephaestus.\n"
+                f"  Repo: {repo_url}\n"
+                f"  Task: {description}\n\n"
+                f"I will handle this — you don't need to talk to @Hephaestus directly.\n"
+                f"I'll let you know when it's done."
+            ),
+            "next_step": None,
+        }
 
     # ── Handle question ──
 

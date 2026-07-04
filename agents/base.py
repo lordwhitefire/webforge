@@ -153,8 +153,18 @@ class Agent:
         action = "respond"
         data = {"message": message, "raw": message}
 
-        # Detect Daedalus-specific actions
-        if any(word in message_lower for word in ["add rule", "correction rule", "blocking", "patch agent", "fix agent", "learn from corrections"]):
+        # Detect correction requests (CEO correcting an agent's behavior)
+        if any(word in message_lower for word in ["correct agent", "correct hermes", "correct hephaestus", "correct athena", "correct minos", "correct thoth", "correct daedalus", "correct jr", "correct sr", "stop agent", "agent should not", "agent must not", "tell daedalus to fix"]):
+            action = "correct_agent"
+            data["message"] = message
+
+        # Detect clone requests
+        elif any(word in message_lower for word in ["clone", "clone repo", "clone project", "git clone"]):
+            action = "clone_project"
+            data["message"] = message
+
+        # Detect Daedalus-specific actions (when talking to Daedalus directly)
+        elif any(word in message_lower for word in ["add rule", "correction rule", "blocking", "patch agent", "fix agent", "learn from corrections"]):
             action = "add_correction_rule"
             import re as _re
             agent_match = _re.search(r'(?:to|into)\s+(\w+)\s+(?:blocking|block|preventing|for)', message_lower)
