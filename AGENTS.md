@@ -158,6 +158,45 @@ when relevant.
 
 Categories: `standards`, `patterns`, `references`, `general`
 
+### 🔍 Quality — Continuous, Not a Phase (Minos)
+
+Quality is NOT a post-build audit. It's **continuous** — it happens DURING
+and AFTER coding, not in a separate phase.
+
+**The Quality Gate:**
+
+When you type `/task-done`, WebForge automatically runs:
+1. **Lint** (ESLint) — code style
+2. **Type check** (tsc --noEmit) — TypeScript correctness
+3. **Tests** (vitest/jest) — unit + integration
+4. **Build** (next build) — does it compile?
+5. **Security** (npm audit) — known vulnerabilities
+
+If any check fails → **task-done is BLOCKED** (strict by default).
+
+**Your options when checks fail:**
+- Fix the issues, re-run `/check <task-id>`, then `/task-done`
+- Override: `/check-approve <task-id> "I know about the warning"` (you're the boss)
+
+**Bug Tracking (replaces Pulse team):**
+- `/bug "cart shows NaN when quantity is 0" high` → creates bugfix task
+- Bugs are two-way doors → no RFC needed → fast fix
+- When fixed, write a regression test so it never comes back
+
+**Code Review (Google/Meta pattern):**
+- `/review <task-id>` → generates a checklist:
+  - PR size (should be < 400 lines — Meta standard)
+  - Test coverage (tests written?)
+  - RFC compliance (code follows approved design?)
+  - Project rules compliance
+  - General checks (no console.log, error handling, etc.)
+
+**Industry patterns used:**
+- Testing Pyramid (Martin Fowler): unit > integration > e2e
+- Shift Left: test during coding, not after
+- CI/CD: lint → type-check → test → build → security
+- Code Review: no merge without review (Google Engineering Practices)
+
 ---
 
 ## How Memory Works
@@ -238,6 +277,13 @@ WebForge remembers 4 things:
 - `/knowledge <query>` — Search the knowledge base
 - `/knowledge-add <topic> | <content> [category]` — Add a research finding
 - `/knowledge-list [category]` — List all knowledge entries
+
+### Quality (replaces rigid 108-agent audit)
+- `/check [task-id]` — Run quality checks (lint, type-check, tests, build, security)
+- `/check-approve <task-id> [reason]` — Override failed checks (you're the boss)
+- `/bug <description> [severity]` — Report a bug (creates bugfix task)
+- `/bugs` — List all open bugs
+- `/review <task-id>` — Generate code review checklist
 
 ### Reference
 - `/laws` — Show the 6 Laws

@@ -175,6 +175,26 @@
     "knowledge-list": {
       "description": "List all knowledge entries. Usage: /knowledge-list [category]",
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/knowledge.py list \"$1\""
+    },
+    "check": {
+      "description": "Run quality checks (lint, type-check, tests, build, security). Blocks task-done if failed. Usage: /check [task-id]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/quality.py check \"$1\""
+    },
+    "check-approve": {
+      "description": "Override failed quality checks. 'I know about the warning, mark it done anyway.' Usage: /check-approve <task-id> [reason]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/quality.py approve \"$1\" \"$2\""
+    },
+    "bug": {
+      "description": "Report a bug — creates a bugfix task in the Kanban board. Usage: /bug <description> [severity]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/bug.py create \"$1\" \"$2\""
+    },
+    "bugs": {
+      "description": "List all open bugs.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/bug.py list"
+    },
+    "review": {
+      "description": "Generate a code review checklist for a task. Usage: /review <task-id>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/review.py generate \"$1\""
     }
   },
   "mcp": {}

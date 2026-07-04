@@ -242,11 +242,31 @@ def task_pick(task_id: str, agent: str) -> McpResult:
 
 # ── Mark task done ──
 def task_done(task_id: str, summary: str = "") -> McpResult:
-    """Mark a task as done. Logs to session."""
+    """
+    Mark a task as done. Logs to session.
+
+    QUALITY GATE: Before marking done, checks if quality checks passed.
+    If checks failed and no override given → BLOCKS (strict by default).
+    Developer can override with /check-approve.
+    """
     board = load_board()
     task = find_task(board, task_id)
     if not task:
         return fail(f"Task not found: {task_id}")
+
+    # Quality gate — check if task passed quality checks
+    try:
+        from quality import is_quality_approved
+        if not is_quality_approved(task_id):
+            return fail(
+                f"QUALITY GATE BLOCKED — {task_id}\n\n"
+                f"Quality checks have not passed for this task.\n"
+                f"Run: /check {task_id}\n"
+                f"If checks fail, fix the issues OR override: /check-approve {task_id}\n"
+                f"Then: /task-done {task_id}"
+            )
+    except ImportError:
+        pass  # Quality module not available, skip gate
 
     task["status"] = "done"
     task["completed_at"] = utc_now()
