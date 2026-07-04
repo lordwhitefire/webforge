@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agents MCP — list and look up agents for @mention routing.
+Agents MCP — list, talk to, and EXECUTE commands through agents.
 
 Industry pattern: @mentions (Slack, GitHub, Discord).
 When the developer types @Hermes or /talk Hermes, this MCP:
@@ -8,8 +8,11 @@ When the developer types @Hermes or /talk Hermes, this MCP:
   2. Returns their skill file path
   3. Returns their role, department, and capabilities
   4. The LLM reads the skill file and adopts that agent's persona
+  5. The LLM EXECUTES the developer's request (not just talks about it)
 
-Also provides /agents command to list all available agents.
+Command execution: When a developer asks an agent to do something
+(correction, rule, task, etc.), the agent runs the WebForge MCP
+via bash instead of just explaining how it should be done.
 """
 
 import os
@@ -219,6 +222,17 @@ def talk_to(agent_name: str, message: str) -> McpResult:
     write_log("Agents", "Developer", "talk_to",
               {"agent": agent["name"], "message": message})
 
+    # Check if the message contains a command request
+    command_map = {
+        "correct": f"WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py add-correction \"$1\"",
+        "add-rule": f"WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py add-rule \"$1\" project developer",
+        "add-preference": f"WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py add-preference \"$1\" project",
+        "add-adr": f"WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py add-adr",
+        "task": f"WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/task.py create \"$1\" \"$2\" \"$3\" \"$4\"",
+        "rfc": f"WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/rfc.py",
+    }
+    has_command = any(cmd in message.lower() for cmd in command_map.keys())
+
     return success({
         "agent": agent,
         "message_to_agent": message,
@@ -226,7 +240,21 @@ def talk_to(agent_name: str, message: str) -> McpResult:
             f"READ THIS SKILL FILE: {agent['skill_file']}\n"
             f"Then respond AS @{agent['name']} ({agent['role']}).\n"
             f"The developer's message: {message}\n\n"
-            f"Adopt the agent's persona. Use their tools. Answer as they would."
+            f"Adopt the agent's persona. Use their tools. Answer as they would.\n\n"
+            f"=== COMMAND EXECUTION RULE ===\n"
+            f"When the developer asks you to make a correction, save a rule, add a preference, "
+            f"or execute ANY WebForge command — DO NOT just talk about it. EXECUTE IT.\n\n"
+            f"You have bash access. Use it to run the appropriate WebForge MCP command.\n"
+            f"For example, if they say 'make a correction', run:\n"
+            f"  WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py add-correction \"wrong | right | global\"\n\n"
+            f"Available command mappings:\n"
+            f"  - correction → memory.py add-correction\n"
+            f"  - rule → memory.py add-rule\n"
+            f"  - preference → memory.py add-preference\n"
+            f"  - task → task.py create\n"
+            f"  - adr → memory.py add-adr\n\n"
+            f"IF THE DEVELOPER ASKS YOU TO DO SOMETHING, DO IT. Don't just explain it.\n"
+            f"Execute first, explain after."
         ),
         "display": (
             f"📤 MESSAGE ROUTED TO @{agent['name']}\n"
