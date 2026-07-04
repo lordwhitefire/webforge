@@ -247,13 +247,17 @@ if __name__ == "__main__":
     if cmd == "info":
         print(json.dumps(info(), indent=2))
     elif cmd == "run":
-        task_id = sys.argv[2] if len(sys.argv) > 2 else ""
-        start_from = sys.argv[3] if len(sys.argv) > 3 else ""
-        if task_id:
-            result = run_chain(task_id, start_from)
-            print(json.dumps(result.to_dict() if hasattr(result, 'to_dict') else result, indent=2))
-        else:
-            print("Usage: run <task-id> [start-from]")
+        # Delegate to executor.py — the real chain runner
+        import subprocess
+        executor_cmd = [
+            "python3", str(Path(__file__).parent / "executor.py"), "run"
+        ] + sys.argv[2:]
+        env = os.environ.copy()
+        env.setdefault("WEBFORGE_PROJECT", "")
+        result = subprocess.run(executor_cmd, capture_output=True, text=True, env=env)
+        print(result.stdout)
+        if result.stderr:
+            print("STDERR:", result.stderr[:500])
     elif cmd == "plan":
         task_id = sys.argv[2] if len(sys.argv) > 2 else ""
         if task_id:

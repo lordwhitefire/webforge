@@ -285,8 +285,12 @@
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/dispatch.py pending"
     },
     "run-chain": {
-      "description": "🏃 Run the entire chain of command for a task autonomously. Launches sub-agents at each level. Only stops if a CEO decision is needed. Usage: /run-chain <task-id>",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/chain.py plan \"$1\""
+      "description": "🏃 Execute the ENTIRE chain autonomously — routes through all levels (Hermes → Dept Head → Lead → Senior → Junior), launches sub-agent for work, reports results back up. Only stops if CEO decision needed. Usage: /run-chain <task-id> [instructions]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/executor.py run \"$1\" \"$2\""
+    },
+    "report-up": {
+      "description": "📤 Route task results back up the chain after a sub-agent completes work. Usage: /report-up <task-id> <from-agent> [report-summary]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/executor.py report-up \"$1\" \"$2\" \"$3\""
     },
     "chain-plan": {
       "description": "🔍 Show the chain plan for a task without running it. Usage: /chain-plan <task-id>",

@@ -355,66 +355,50 @@ Every task event automatically sends a notification to the relevant agent's inbo
 
 Nobody is left in the dark. Every event pings the right people.
 
-### 🏃 Chain Runner — Automatic Execution
+### 🏃 Chain Executor — Automatic Execution (NEW)
 
-The Chain Runner makes agents work like sub-agents — launch once, they run until done.
+The Chain Executor replaces manual chain routing. You call it once — it does everything.
 
-**How it works:**
-1. When a task is created and auto-routed to a department, I automatically run the chain
-2. I launch sub-agents for each level (director → head → senior → junior)
-3. Each sub-agent runs autonomously — does the work, reports back
-4. The chain ONLY stops if a CEO decision is needed
-5. Results flow back up automatically
+**How Python sub-agents work (for reference):**
+When I (the AI) launch a sub-agent via my `task` tool:
+1. I give it a prompt + tools
+2. It runs **autonomously** — reads files, writes code, searches
+3. When done, it returns the result
+4. I do NOT check on it mid-work. It just finishes.
+
+**How the Chain Executor works (same pattern):**
+The Python script `executor.py` runs the ENTIRE chain in one call:
+1. Determines the department from task type
+2. Routes through ALL levels: Hermes → Dept Head → Lead → Senior → Junior
+3. Moves task to `doing` at the executor level
+4. Outputs the work prompt for the sub-agent
+5. ONLY stops if CEO decision needed (architecture/design tasks)
 
 **The flow:**
 ```
-Talk to any agent → they create a task → board
-  → @Hermes (COO) receives automatically
-  → @Hermes routes to department head (e.g., @Hephaestus)
-  → Chain Runner launches sub-agents:
-       @Hephaestus → @Aurora → @Lead-Faro → @Sr-Hale → @Jr-Hawk
-  → @Jr-Hawk writes the code (autonomously)
-  → Reports back up: Jr → Sr → Lead → Aurora → Hephaestus → Hermes → CEO
-  → Only stops if: "CEO, I need you to decide X"
+Talk to any agent → creates task → board
+  → I run /run-chain <task-id>
+  → executor.py routes through ALL levels automatically:
+       @Hermes → @DeptHead → @Lead → @Senior → @Junior
+  → I launch a sub-agent for @Junior with the work prompt
+  → @Junior works autonomously → reports back to me
+  → I run /report-up → executor.py routes results back up:
+       @Junior → @Senior → @Lead → @DeptHead → @Hermes → CEO
 ```
 
 **Commands:**
-- `/run-chain <task-id>` — Show the chain plan and execute it
+- `/run-chain <task-id>` — Execute the ENTIRE chain. Routes through all levels, outputs work prompt. Then I launch a sub-agent for the executor.
+- `/report-up <task-id> <from-agent>` — Route results back up after sub-agent finishes
 - `/chain-plan <task-id>` — Preview the chain without running
 
-**AI instruction — FOLLOW THE CHAIN STEP BY STEP:**
-When you see a task created + routed, call `/run-chain` automatically.
-Do NOT wait for the user to ask. The chain runs until done or stuck.
+**How I use it — the 3-step pattern:**
+1. **Execute chain:** `/run-chain task-001` → executor.py routes through all levels
+2. **Launch sub-agent:** I read the executor output, launch a sub-agent with the work prompt
+3. **Report up:** When sub-agent finishes, run `/report-up` to route results back
 
-**CRITICAL — You MUST follow the chain plan in order:**
-1. Start at the TOP of the chain — @Hermes is always step 0
-2. Do NOT skip levels. Do NOT jump to the executor.
-3. Each level must complete before the next starts:
-   - Step 0: @Hermes reviews → routes to department head
-   - Step 1: @Department Head reviews → routes down
-   - Step 2: @Tech Lead → @Senior → @Junior
-   - Final step: @Junior does the work
-4. After each level, report: "Level X done. Moving to level X+1."
-5. Only skip to the executor if the chain plan says it's a direct task (junior-level work).
-6. NEVER jump from CEO request straight to a junior agent. Always go through the chain.
-
-**Example of CORRECT behavior:**
-```
-/run-chain task-001
-→ Shows chain plan: @Hermes → @Athena → @Probe-Orion
-→ I execute step 0: @Hermes reviews task, routes to @Athena
-→ I execute step 1: @Athena reviews, assigns to @Probe-Orion
-→ I execute step 2: @Probe-Orion does the work
-→ Reports back: Probe-Orion → Athena → Hermes → CEO
-```
-
-**Example of WRONG behavior (what I did):**
-```
-/run-chain task-001
-→ I skip Hermes and Athena
-→ Jump straight to @Probe-Orion
-→ WRONG! Broke the chain of command.
-```
+**Why this fixes the old problem:**
+Before: Human had to manually ping each agent. Chain stopped after Hermes.
+Now: ONE command routes through ALL levels. No manual routing. No "chain stops."
 
 ---
 
