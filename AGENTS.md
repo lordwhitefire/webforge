@@ -235,6 +235,22 @@ and reviewed before merging (Google's "Docs as Code" pattern).
 
 **Hermes = COO.** Coordinates work, tracks progress, surfaces blockers, escalates decisions to you.
 
+**⚠️ CRITICAL: Hermes does NOT do the work.** Hermes is the bridge between you and the departments. When you talk to Hermes:
+- Hermes LISTENS
+- Hermes CREATES a task and ROUTES it to the right department
+- Hermes does NOT write code, fix bugs, or build features
+- That's Hephaestus's job (Build), Minos's job (Quality), Athena's job (Intelligence), etc.
+
+**Routing table:**
+| You tell Hermes... | Hermes creates... | Routes to... |
+|---|---|---|
+| "Add a feature" | task (feature) | @Hephaestus via /build |
+| "There's a bug" | task (bugfix) | @Hephaestus via /build |
+| "Research this" | knowledge entry | @Athena |
+| "Document this" | doc generation | @Thoth |
+| "WebForge has a bug" | task (bugfix) | @Daedalus (Meta Engineering) |
+| "I need a decision" | escalation | You (CEO) answer via /answer |
+
 **The 13-step rigid pipeline is RETIRED.** Replaced by:
 - Kanban board (task.py) — for tracking what to work on
 - Standup — for tracking status and blockers
