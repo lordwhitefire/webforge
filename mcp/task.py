@@ -114,6 +114,14 @@ def task_create(title: str, task_type: str = "feature", area: str = "",
                    agent="Developer", kind="note")
     write_log("Task", "Hephaestus", "task_create",
               {"id": task_id, "title": title, "type": task_type})
+
+    # ── SEND NOTIFICATION (the phone system) ──
+    try:
+        from notify import notify_task_created
+        notify_task_created(task_id, title, task_type, from_agent="Developer")
+    except:
+        pass  # Notify module not available, skip
+
     return success({"task": task, "id": task_id})
 
 
@@ -237,6 +245,14 @@ def task_pick(task_id: str, agent: str) -> McpResult:
                    agent=agent, kind="note")
     write_log("Task", agent, "task_pick",
               {"id": task_id, "title": task["title"]})
+
+    # ── SEND NOTIFICATION (the phone system) ──
+    try:
+        from notify import notify_task_assigned
+        notify_task_assigned(task_id, task["title"], agent, from_agent="Hermes")
+    except:
+        pass
+
     return success({"task": task, "picked_by": agent})
 
 
@@ -278,6 +294,15 @@ def task_done(task_id: str, summary: str = "") -> McpResult:
     session_append(log_msg, agent=task.get("owner") or "Hephaestus", kind="decision")
     write_log("Task", task.get("owner", "Hephaestus"), "task_done",
               {"id": task_id, "title": task["title"]})
+
+    # ── SEND NOTIFICATION (the phone system) ──
+    try:
+        from notify import notify_task_done
+        done_by = task.get("owner") or "Hephaestus"
+        notify_task_done(task_id, task["title"], done_by, from_agent=done_by)
+    except:
+        pass
+
     return success({"task": task})
 
 
@@ -292,6 +317,14 @@ def task_block(task_id: str, reason: str) -> McpResult:
     save_board(board)
     session_append(f"TASK BLOCKED — {task_id}: {reason}",
                    agent="Hephaestus", kind="note")
+
+    # ── SEND NOTIFICATION (the phone system) ──
+    try:
+        from notify import notify_task_blocked
+        notify_task_blocked(task_id, task["title"], reason, from_agent="Hephaestus")
+    except:
+        pass
+
     return success({"task": task})
 
 

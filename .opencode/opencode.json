@@ -247,6 +247,18 @@
     "talk": {
       "description": "📤 Talk directly to a specific agent. Usage: /talk <agent-name> <message>. Example: /talk Hermes what should I work on next?",
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/agents.py talk \"$1\" \"$2\""
+    },
+    "notifications": {
+      "description": "📬 Show all unread notifications across all agents (the phone system).",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/notify.py all-unread"
+    },
+    "inbox": {
+      "description": "📬 Show an agent's notification inbox. Usage: /inbox <agent-name>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/notify.py inbox \"$1\""
+    },
+    "read-notifications": {
+      "description": "✅ Mark an agent's notifications as read. Usage: /read-notifications <agent-name>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/notify.py read \"$1\""
     }
   },
   "mcp": {}

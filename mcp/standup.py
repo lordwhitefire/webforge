@@ -174,7 +174,25 @@ def standup_run() -> McpResult:
     else:
         lines.append("  (no rules set — use /correct when AI does something wrong)")
 
-    # ── 6. SUGGESTED NEXT ACTION ──
+    # ── 6. NOTIFICATIONS (the phone system) ──
+    lines.append("")
+    lines.append("📬 NOTIFICATIONS")
+    lines.append("─" * 40)
+
+    try:
+        from notify import get_all_unread
+        unread = get_all_unread()
+        if unread:
+            for n in unread:
+                emoji = {"TASK_CREATED": "📝", "TASK_ASSIGNED": "📤", "TASK_DONE": "✅",
+                         "TASK_BLOCKED": "🚫", "ESCALATION": "📤", "REVIEW_NEEDED": "🔍"}.get(n["event"], "🔔")
+                lines.append(f"  {emoji} → @{n['agent']}: {n['message'][:80]}")
+        else:
+            lines.append("  ✅ No unread notifications. Everyone is caught up.")
+    except:
+        lines.append("  (notification system not available)")
+
+    # ── 7. SUGGESTED NEXT ACTION ──
     lines.append("")
     lines.append("💡 SUGGESTED NEXT ACTION")
     lines.append("─" * 40)

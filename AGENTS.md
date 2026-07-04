@@ -321,6 +321,40 @@ When you type @AgentName or /talk AgentName:
   @Minos (Quality), @Thoth (Docs), @Daedalus (Meta Engineering),
   @Voss (HR), @Dorian (UI Research)
 
+### 📬 Notifications — The Phone System
+
+**Problem solved:** Nobody gets a ping when something happens.
+
+**How it works now:**
+Every task event automatically sends a notification to the relevant agent's inbox:
+
+| Event | Who gets notified |
+|---|---|
+| Task created | Department director (e.g. @Hephaestus for build tasks) |
+| Task assigned | The agent who was assigned |
+| Task done | Developer (you) + @Minos (Quality — review needed) |
+| Task blocked | @Hermes (COO) + Developer (you) |
+
+**Commands:**
+- `/notifications` — show ALL unread notifications across all agents
+- `/inbox <agent-name>` — show one agent's inbox
+- `/read-notifications <agent-name>` — mark their notifications as read
+
+**Where notifications show up:**
+- `/standup` — includes a "📬 NOTIFICATIONS" section showing all unread
+- `/resume` — runs standup at the end, so you see notifications automatically
+- `/inbox <agent-name>` — check a specific agent's inbox
+
+**The notification chain (solves all 3 breakdowns):**
+```
+1. Hermes creates task → 📝 notifies @Hephaestus "new task on the board"
+2. /task-approve → 📤 notifies assigned agent "task assigned to you"
+3. /task-done → ✅ notifies Developer + @Minos "task done, review needed"
+4. /task-block → 🚫 notifies @Hermes + Developer "task blocked, needs attention"
+```
+
+Nobody is left in the dark. Every event pings the right people.
+
 ---
 
 ## How Memory Works
@@ -428,6 +462,9 @@ WebForge remembers 4 things:
 - `/agents` — List all available agents you can talk to
 - `/talk <agent-name> <message>` — Talk directly to a specific agent
 - `@AgentName` in your message — Mention an agent inline (LLM adopts their persona)
+- `/notifications` — Show all unread notifications (the phone system)
+- `/inbox <agent-name>` — Show an agent's notification inbox
+- `/read-notifications <agent-name>` — Mark an agent's notifications as read
 
 ### Reference
 - `/laws` — Show the 6 Laws
