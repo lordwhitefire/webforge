@@ -197,6 +197,38 @@ If any check fails → **task-done is BLOCKED** (strict by default).
 - CI/CD: lint → type-check → test → build → security
 - Code Review: no merge without review (Google Engineering Practices)
 
+### 📝 Documentation — Docs as Code (Thoth)
+
+Documentation is NOT manually written. It's **generated from the project**
+and reviewed before merging (Google's "Docs as Code" pattern).
+
+**5 types of generated docs:**
+
+1. **README** (`/readme`) — project overview, stack, scripts, structure, ADRs, rules
+   Auto-detected from package.json, file scan, ADRs, and rules.
+
+2. **Changelog** (`/changelog`) — from git history using Keep a Changelog format
+   Categorizes commits: Added, Changed, Deprecated, Removed, Fixed, Security
+
+3. **API Docs** (`/api-docs`) — from scanning `src/app/api/**/route.ts`
+   Lists all routes with HTTP methods and JSDoc descriptions
+
+4. **Env Docs** (`/env-docs`) — from scanning `.env.example`
+   Documents each variable: required, public, description
+
+5. **Onboarding** (`/onboard`) — pulls from ALL sources
+   Quick start, stack, ADRs, rules, current tasks, recent commits, WebForge commands
+
+**Where generated docs go:**
+- `.webforge/docs/` (not tracked by git — you review and merge manually)
+- Generate all at once: `/docs`
+
+**What's already handled (not by Thoth):**
+- Session logs → Memory MCP (real-time, Law 6)
+- Architecture decisions → ADRs
+- Rules/corrections → Rules system
+- Research findings → Knowledge base
+
 ---
 
 ## How Memory Works
@@ -284,6 +316,14 @@ WebForge remembers 4 things:
 - `/bug <description> [severity]` — Report a bug (creates bugfix task)
 - `/bugs` — List all open bugs
 - `/review <task-id>` — Generate code review checklist
+
+### Documentation (Docs as Code — replaces 60-agent Thoth)
+- `/readme` — Generate README from project state → `.webforge/docs/`
+- `/changelog` — Generate changelog from git history (Keep a Changelog format)
+- `/api-docs` — Generate API documentation from route files
+- `/env-docs` — Document environment variables from .env.example
+- `/onboard` — Generate onboarding doc (pulls from ALL sources)
+- `/docs` — Generate ALL 5 at once
 
 ### Reference
 - `/laws` — Show the 6 Laws

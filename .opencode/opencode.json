@@ -195,6 +195,30 @@
     "review": {
       "description": "Generate a code review checklist for a task. Usage: /review <task-id>",
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/review.py generate \"$1\""
+    },
+    "readme": {
+      "description": "Generate README from project state. Output to .webforge/docs/ for review.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/docs.py readme"
+    },
+    "changelog": {
+      "description": "Generate changelog from git history (Keep a Changelog format).",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/docs.py changelog"
+    },
+    "api-docs": {
+      "description": "Generate API documentation from route files.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/docs.py api-docs"
+    },
+    "env-docs": {
+      "description": "Document environment variables from .env.example.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/docs.py env-docs"
+    },
+    "onboard": {
+      "description": "Generate onboarding document for new developers/sessions. Pulls from ALL sources.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/docs.py onboard"
+    },
+    "docs": {
+      "description": "Generate ALL documentation (README, changelog, API docs, env docs, onboarding) at once.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/docs.py all"
     }
   },
   "mcp": {}
