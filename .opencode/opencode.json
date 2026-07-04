@@ -147,6 +147,34 @@
     "build": {
       "description": "PROPOSAL GATE: Shows the next task to work on and waits for your approval. You are the first point of contact before any Hephaestus agent starts.",
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/task.py propose"
+    },
+    "rfc": {
+      "description": "Show the RFC (design proposal) for a task. Usage: /rfc <task-id>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/rfc.py show \"$1\""
+    },
+    "rfc-approve": {
+      "description": "Approve the RFC for a task — unlocks coding. Usage: /rfc-approve <task-id>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/rfc.py approve \"$1\""
+    },
+    "rfc-reject": {
+      "description": "Reject the RFC — sends task back to backlog. Usage: /rfc-reject <task-id> [reason]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/rfc.py reject \"$1\" \"$2\""
+    },
+    "rfcs": {
+      "description": "List all RFCs and their statuses.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/rfc.py list"
+    },
+    "knowledge": {
+      "description": "Search the knowledge base. Usage: /knowledge <query>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/knowledge.py search \"$1\""
+    },
+    "knowledge-add": {
+      "description": "Add a research finding. Usage: /knowledge-add <topic> | <content> [category]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/knowledge.py add \"$1\""
+    },
+    "knowledge-list": {
+      "description": "List all knowledge entries. Usage: /knowledge-list [category]",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/knowledge.py list \"$1\""
     }
   },
   "mcp": {}

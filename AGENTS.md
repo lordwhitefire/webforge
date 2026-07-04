@@ -121,6 +121,43 @@ Real engineering teams (Google, Meta, Atlassian) don't work in fixed steps.
 They pull tasks from a board. The developer decides what to work on next.
 This matches that pattern.
 
+### 📋 RFC — Design Review for One-Way Doors (Amazon pattern)
+
+Not every task needs a design document. WebForge uses Amazon's "two-way door" rule:
+
+- **One-way door** (irreversible) → RFC required before coding
+  - Task types: `feature`, `refactor`, `architecture`
+  - Effort: `L`
+- **Two-way door** (easily reversible) → skip RFC, just code
+  - Task types: `bugfix`, `test`, `docs`
+  - Effort: `S`, `M`
+
+**How it works:**
+
+1. `/task-approve task-001` — you approve the task
+2. If it's a one-way door → WebForge **auto-generates an RFC**
+3. The RFC includes: summary, motivation, design, alternatives, risks, rules, ADRs
+4. WebForge says: "⚠️ RFC REQUIRED. Review: /rfc task-001"
+5. **Coding is BLOCKED until you approve the RFC**
+6. `/rfc task-001` — you review the design
+7. `/rfc-approve task-001` — unlock coding
+   OR
+   `/rfc-reject task-001 "use server-side instead"` — send back
+
+**Why:** Big tech (Uber, Amazon, Rust, Meta) all use RFCs. They catch design
+mistakes BEFORE code is written. Cheaper to fix a design on paper than in code.
+
+### 📚 Knowledge Base (replaces rigid Odin team)
+
+The old design had 17 Odin agents each researching 5 areas. That's not how
+real teams work. Instead, knowledge is added **as needed** and **searched**
+when relevant.
+
+- `/knowledge-add "Next.js Server Components" | "Use by default..." standards`
+- `/knowledge "server components"` — search when working on a related task
+
+Categories: `standards`, `patterns`, `references`, `general`
+
 ---
 
 ## How Memory Works
@@ -190,6 +227,17 @@ WebForge remembers 4 things:
 - `/task-reject <id> [reason]` — Reject, propose next task
 - `/task-done <id> [summary]` — Mark task done
 - `/task-block <id> <reason>` — Mark task as blocked
+
+### Design Review (RFC — for one-way door tasks)
+- `/rfc <task-id>` — Show the RFC (design proposal) for a task
+- `/rfc-approve <task-id>` — Approve the RFC, unlock coding
+- `/rfc-reject <task-id> [reason]` — Reject RFC, send back to backlog
+- `/rfcs` — List all RFCs
+
+### Knowledge Base (replaces rigid Odin team)
+- `/knowledge <query>` — Search the knowledge base
+- `/knowledge-add <topic> | <content> [category]` — Add a research finding
+- `/knowledge-list [category]` — List all knowledge entries
 
 ### Reference
 - `/laws` — Show the 6 Laws

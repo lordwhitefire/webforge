@@ -351,6 +351,9 @@ def task_approve(task_id: str, agent: str = "auto") -> McpResult:
     """
     Developer approved the proposed task.
     Auto-pulls: assigns owner and moves to DOING.
+
+    If the task is a one-way door (feature or L effort), an RFC is
+    auto-generated. Coding is blocked until the RFC is approved.
     """
     board = load_board()
     task = find_task(board, task_id)
@@ -359,13 +362,41 @@ def task_approve(task_id: str, agent: str = "auto") -> McpResult:
 
     # Determine owner
     if agent == "auto":
-        # Auto-assign based on area (future: map areas to agents)
-        # For now, use "Hephaestus" as the default
         owner = "Hephaestus"
     else:
         owner = agent
 
-    return task_pick(task_id, owner)
+    # Pick the task (assigns owner, moves to DOING)
+    result = task_pick(task_id, owner)
+    if not result.ok:
+        return result
+
+    # Check if this is a one-way door (needs RFC)
+    try:
+        from rfc import needs_rfc, rfc_generate, has_approved_rfc
+        if needs_rfc(task) and not has_approved_rfc(task_id):
+            # Auto-generate RFC — coding is blocked until RFC is approved
+            rfc_result = rfc_generate(task)
+            if rfc_result.ok:
+                return success({
+                    "task": task,
+                    "picked_by": owner,
+                    "rfc_required": True,
+                    "rfc_message": rfc_result.data.get("message", ""),
+                    "message": (
+                        f"Task {task_id} approved and picked up by {owner}.\n\n"
+                        f"⚠️ RFC REQUIRED — This is a {task.get('type', 'feature')} "
+                        f"(one-way door). An RFC has been generated.\n"
+                        f"Review it: /rfc {task_id}\n"
+                        f"Approve design: /rfc-approve {task_id}\n"
+                        f"Reject design: /rfc-reject {task_id} <reason>\n\n"
+                        f"Coding is BLOCKED until the RFC is approved."
+                    ),
+                })
+    except ImportError:
+        pass  # RFC module not available, skip
+
+    return result
 
 
 def task_reject(task_id: str, reason: str = "") -> McpResult:
