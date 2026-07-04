@@ -1,13 +1,13 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "instructions": [
-    "{{.WebForge}}/AGENTS.md"
+    "$HOME/webforge/AGENTS.md"
   ],
   "agent": {
     "webforge": {
       "description": "WebForge — AI agent organization that builds and maintains websites",
       "mode": "primary",
-      "prompt": "{{.WebForge}}/AGENTS.md",
+      "prompt": "$HOME/webforge/AGENTS.md",
       "tools": {
         "bash": true,
         "edit": true,
@@ -22,83 +22,83 @@
   "command": {
     "resume": {
       "description": "Resume a WebForge session — read all memory, rules, and where we stopped",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/webforge resume"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/webforge resume"
     },
     "init": {
       "description": "Initialize WebForge in the current project",
-      "template": "python3 {{.WebForge}}/webforge init \"$OPENCODE_CWD\""
+      "template": "python3 $HOME/webforge/webforge init \"$OPENCODE_CWD\""
     },
     "on": {
       "description": "Turn WebForge ON for current project",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/webforge on"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/webforge on"
     },
     "off": {
       "description": "Turn WebForge OFF for current project (saves session)",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/webforge off"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/webforge off"
     },
     "status": {
       "description": "Check WebForge status for current project",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/webforge status"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/webforge status"
     },
     "rules": {
       "description": "List all rules (do's and don'ts) for this project",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py read-rules"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py read-rules"
     },
     "add-rule": {
       "description": "Add a new rule. Usage: /add-rule <rule text>",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py add-rule \"$1\" project developer"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py add-rule \"$1\" project developer"
     },
     "preferences": {
       "description": "Read all preferences (likes/dislikes)",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py read-preferences"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py read-preferences"
     },
     "add-preference": {
       "description": "Add a preference. Usage: /add-preference <preference text>",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py add-preference \"$1\" project"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py add-preference \"$1\" project"
     },
     "adrs": {
       "description": "List all Architecture Decision Records",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py list-adrs"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py list-adrs"
     },
     "add-adr": {
       "description": "Add a new ADR. Usage: /add-adr <title> | <context> | <decision>",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 -c \"\nimport sys\nsys.path.insert(0, '{{.WebForge}}/mcp')\nfrom memory import add_adr\nimport os\nos.environ['WEBFORGE_PROJECT'] = os.environ.get('OPENCODE_CWD', '.')\nparts = '$1'.split('|')\nif len(parts) >= 3:\n    print(add_adr(parts[0].strip(), parts[1].strip(), parts[2].strip(), parts[3].strip() if len(parts) > 3 else '').to_dict())\nelse:\n    print('Usage: /add-adr <title> | <context> | <decision> | <consequences>')\n\""
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 -c \"\nimport sys\nsys.path.insert(0, '$HOME/webforge/mcp')\nfrom memory import add_adr\nimport os\nos.environ['WEBFORGE_PROJECT'] = os.environ.get('OPENCODE_CWD', '.')\nparts = '$1'.split('|')\nif len(parts) >= 3:\n    print(add_adr(parts[0].strip(), parts[1].strip(), parts[2].strip(), parts[3].strip() if len(parts) > 3 else '').to_dict())\nelse:\n    print('Usage: /add-adr <title> | <context> | <decision> | <consequences>')\n\""
     },
     "session-log": {
       "description": "Read the last 7 days of session logs",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py session-read 7"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py session-read 7"
     },
     "stop": {
       "description": "Mark end of session — where you stopped, what's next. Usage: /stop <summary>",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/memory.py session-stop \"$1\""
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/memory.py session-stop \"$1\""
     },
     "laws": {
       "description": "Show the 6 Laws of WebForge",
-      "template": "cat {{.WebForge}}/LAWS.md"
+      "template": "cat $HOME/webforge/LAWS.md"
     },
     "areas": {
       "description": "Show the 88 areas checklist",
-      "template": "cat {{.WebForge}}/AREAS.md"
+      "template": "cat $HOME/webforge/AREAS.md"
     },
     "registry": {
       "description": "Show the WebForge Agent Registry",
-      "template": "cat {{.WebForge}}/REGISTRY.md"
+      "template": "cat $HOME/webforge/REGISTRY.md"
     },
     "probe": {
       "description": "Probe the current project (auto-detects fresh vs existing). Scans codebase, identifies what's decided/missing.",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/probe.py probe auto"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/probe.py probe auto"
     },
     "probe-existing": {
       "description": "Probe an EXISTING project — scans codebase without asking questions. Use for projects that already have code.",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/probe.py probe existing"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/probe.py probe existing"
     },
     "probe-fresh": {
       "description": "Probe a FRESH project — asks questions. Use for new projects with no code yet.",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/probe.py probe fresh"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/probe.py probe fresh"
     },
     "scan": {
       "description": "Scan the project and print a complete map (pages, components, API routes, ADRs, tests, git info).",
-      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 {{.WebForge}}/mcp/probe.py scan"
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/probe.py scan"
     }
   },
   "mcp": {}
