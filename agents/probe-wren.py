@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
 ProbeWren — Intelligence Department
-Standalone agent script. Does NOT rely on other agents' scripts.
+STANDALONE script. Checks board for assigned tasks and works on them.
 
 Role: I am Probe-Wren. I am a Probe Agent in the Intelligence team. I report to Athena.
 Areas: 06-10
-Skill file: skills/intelligence/probe-wren.md
 """
 
 import sys
@@ -17,37 +16,104 @@ from pathlib import Path
 WEBFORGE_HOME = Path.home() / "webforge"
 MCP_DIR = WEBFORGE_HOME / "mcp"
 sys.path.insert(0, str(MCP_DIR))
+sys.path.insert(0, str(WEBFORGE_HOME / "agents"))
 
-def run(message, context=None):
-    """Probe agent: scans project for areas 06-10."""
-    project = os.environ.get("WEBFORGE_PROJECT", os.getcwd())
 
-    # Scan project structure
-    result = subprocess.run(["python3", str(MCP_DIR / "probe.py"), "scan"],
-                          capture_output=True, text=True, timeout=30,
-                          env={**os.environ, "WEBFORGE_PROJECT": project})
+def check_my_tasks():
+    """Check the Kanban board for tasks assigned to me."""
+    try:
+        result = subprocess.run(["python3", str(MCP_DIR / "task.py"), "list", "doing"],
+                              capture_output=True, text=True, timeout=10,
+                              env={**os.environ, "WEBFORGE_PROJECT": os.environ.get("WEBFORGE_PROJECT", os.getcwd())})
+        try:
+            tasks = json.loads(result.stdout)
+        except:
+            import ast
+            try:
+                tasks = ast.literal_eval(result.stdout)
+            except:
+                tasks = {"data": {"tasks": []}}
+        all_tasks = tasks.get("data", {}).get("tasks", [])
+        # Find tasks where I'm the owner
+        my_name = "probe-wren"
+        my_tasks = [t for t in all_tasks if t.get("owner", "").lower() == my_name.lower()]
+        return my_tasks
+    except:
+        return []
 
-    scan_data = json.loads(result.stdout) if result.returncode == 0 else {}
+def mark_done(task_id, summary=""):
+    """Mark a task as done."""
+    try:
+        subprocess.run(["python3", str(MCP_DIR / "task.py"), "done", task_id, summary],
+                      capture_output=True, timeout=30,
+                      env={**os.environ, "WEBFORGE_PROJECT": os.environ.get("WEBFORGE_PROJECT", os.getcwd())})
+    except:
+        pass
 
-    # Log findings to memory
+def log_to_memory(message):
+    """Write to session log."""
     try:
         subprocess.run(["python3", str(MCP_DIR / "memory.py"), "session-append",
-                       f"PROBE-ProbeWren scanned project. Files: {scan_data.get('stats', {}).get('total_files', '?')}",
-                       "ProbeWren", "note"],
+                       message, "ProbeWren", "note"],
                       capture_output=True, timeout=10,
-                      env={**os.environ, "WEBFORGE_PROJECT": project})
-    except: pass
+                      env={**os.environ, "WEBFORGE_PROJECT": os.environ.get("WEBFORGE_PROJECT", os.getcwd())})
+    except:
+        pass
+
+
+
+def do_work(task):
+    """Probe agent: scan project for areas 06-10."""
+    project = os.environ.get("WEBFORGE_PROJECT", os.getcwd())
+    try:
+        result = subprocess.run(["python3", str(MCP_DIR / "probe.py"), "scan"],
+                              capture_output=True, text=True, timeout=30,
+                              env={**os.environ, "WEBFORGE_PROJECT": project})
+        scan = json.loads(result.stdout) if result.returncode == 0 else {}
+        files = scan.get("stats", {}).get("total_files", "?")
+        log_to_memory(f"PROBE-ProbeWren scanned: {files} files for areas 06-10")
+        return f"Probed areas 06-10. Found {files} files."
+    except Exception as e:
+        return f"Probe failed: {e}"
+
+
+def run(message="work", context=None):
+    """Main entry point. Checks board for my tasks and works on them."""
+    # Check the board for tasks assigned to me
+    my_tasks = check_my_tasks()
+
+    if not my_tasks:
+        return {
+            "agent": "ProbeWren",
+            "action": "idle",
+            "message": f"I am ProbeWren. No tasks assigned to me on the board. I own areas 06-10.",
+            "next_step": None,
+        }
+
+    # Work on the first task
+    task = my_tasks[0]
+    task_id = task["id"]
+    task_title = task.get("title", "unknown")
+
+    # Do the work
+    result_message = do_work(task)
+
+    # Mark the task done
+    mark_done(task_id, result_message)
+
+    # Log to memory
+    log_to_memory(f"ProbeWren COMPLETED {task_id}: {task_title} — {result_message}")
 
     return {
         "agent": "ProbeWren",
-        "action": "probe",
-        "areas": "06-10",
-        "message": f"I am ProbeWren. I probed areas 06-10. Found {scan_data.get('stats', {}).get('total_files', '?')} files. Findings written to memory.",
-        "scan": scan_data,
+        "action": "work_complete",
+        "task_id": task_id,
+        "task_title": task_title,
+        "message": f"I am ProbeWren. I worked on {task_id}: {task_title}.\n  Result: {result_message}\n  Task marked DONE.",
         "next_step": None,
     }
 
 if __name__ == "__main__":
-    msg = " ".join(sys.argv[1:]) or "probe"
+    msg = " ".join(sys.argv[1:]) or "work"
     r = run(msg)
     print(r.get("message", json.dumps(r, indent=2)))

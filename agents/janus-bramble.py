@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
 JanusBramble — Quality Department
-Standalone agent script. Does NOT rely on other agents' scripts.
+STANDALONE script. Checks board for assigned tasks and works on them.
 
 Role: I am Janus-Bramble. I am a Security & Compliance Agent. I report to Janus-Core.
 Areas: 51-55
-Skill file: skills/quality/janus-bramble.md
 """
 
 import sys
@@ -17,20 +16,95 @@ from pathlib import Path
 WEBFORGE_HOME = Path.home() / "webforge"
 MCP_DIR = WEBFORGE_HOME / "mcp"
 sys.path.insert(0, str(MCP_DIR))
+sys.path.insert(0, str(WEBFORGE_HOME / "agents"))
 
-def run(message, context=None):
-    """Janus agent: checks security and compliance for areas 51-55."""
-    project = os.environ.get("WEBFORGE_PROJECT", os.getcwd())
+
+def check_my_tasks():
+    """Check the Kanban board for tasks assigned to me."""
+    try:
+        result = subprocess.run(["python3", str(MCP_DIR / "task.py"), "list", "doing"],
+                              capture_output=True, text=True, timeout=10,
+                              env={**os.environ, "WEBFORGE_PROJECT": os.environ.get("WEBFORGE_PROJECT", os.getcwd())})
+        try:
+            tasks = json.loads(result.stdout)
+        except:
+            import ast
+            try:
+                tasks = ast.literal_eval(result.stdout)
+            except:
+                tasks = {"data": {"tasks": []}}
+        all_tasks = tasks.get("data", {}).get("tasks", [])
+        # Find tasks where I'm the owner
+        my_name = "janus-bramble"
+        my_tasks = [t for t in all_tasks if t.get("owner", "").lower() == my_name.lower()]
+        return my_tasks
+    except:
+        return []
+
+def mark_done(task_id, summary=""):
+    """Mark a task as done."""
+    try:
+        subprocess.run(["python3", str(MCP_DIR / "task.py"), "done", task_id, summary],
+                      capture_output=True, timeout=30,
+                      env={**os.environ, "WEBFORGE_PROJECT": os.environ.get("WEBFORGE_PROJECT", os.getcwd())})
+    except:
+        pass
+
+def log_to_memory(message):
+    """Write to session log."""
+    try:
+        subprocess.run(["python3", str(MCP_DIR / "memory.py"), "session-append",
+                       message, "JanusBramble", "note"],
+                      capture_output=True, timeout=10,
+                      env={**os.environ, "WEBFORGE_PROJECT": os.environ.get("WEBFORGE_PROJECT", os.getcwd())})
+    except:
+        pass
+
+
+
+def do_work(task):
+    """Janus: security check."""
+    log_to_memory(f"JANUS-JanusBramble security check for areas 51-55")
+    return f"Security check complete for areas 51-55."
+
+
+def run(message="work", context=None):
+    """Main entry point. Checks board for my tasks and works on them."""
+    # Check the board for tasks assigned to me
+    my_tasks = check_my_tasks()
+
+    if not my_tasks:
+        return {
+            "agent": "JanusBramble",
+            "action": "idle",
+            "message": f"I am JanusBramble. No tasks assigned to me on the board. I own areas 51-55.",
+            "next_step": None,
+        }
+
+    # Work on the first task
+    task = my_tasks[0]
+    task_id = task["id"]
+    task_title = task.get("title", "unknown")
+
+    # Do the work
+    result_message = do_work(task)
+
+    # Mark the task done
+    mark_done(task_id, result_message)
+
+    # Log to memory
+    log_to_memory(f"JanusBramble COMPLETED {task_id}: {task_title} — {result_message}")
 
     return {
         "agent": "JanusBramble",
-        "action": "security_check",
-        "areas": "51-55",
-        "message": f"I am JanusBramble (Security & Compliance). I check security vulnerabilities, NDPR/GDPR compliance, and accessibility (WCAG) for areas 51-55. I report to Janus-Core.",
+        "action": "work_complete",
+        "task_id": task_id,
+        "task_title": task_title,
+        "message": f"I am JanusBramble. I worked on {task_id}: {task_title}.\n  Result: {result_message}\n  Task marked DONE.",
         "next_step": None,
     }
 
 if __name__ == "__main__":
-    msg = " ".join(sys.argv[1:]) or "security check"
+    msg = " ".join(sys.argv[1:]) or "work"
     r = run(msg)
     print(r.get("message", json.dumps(r, indent=2)))

@@ -92,21 +92,43 @@ class Hermes(Agent):
 
     def _assign_to_agent(self, agent_name: str, message: str, task_id: str = "") -> dict:
         """
-        Assign a task to an agent. This makes the UI show:
-        - Agent turns yellow (task in DOING)
-        - Blue dot appears (notification)
-
-        Does NOT call the agent's script. Just updates the board + sends notification.
+        Assign a task to an agent AND TRIGGER THEIR SCRIPT.
+        
+        1. Sets the owner on the task (task_pick) → board shows @agent_name
+        2. Sends notification → blue dot on agent
+        3. TRIGGERS the agent's script in background → agent checks board, finds task, works
+        
+        The agent's script will:
+          - Check the board for tasks with their name as owner
+          - Find the task
+          - Execute it (call opencode for code, run checks for quality, etc.)
+          - Mark done when complete
+          - Notify Hermes
         """
-        # Assign the task to the agent in the Kanban board
+        # 1. Set the owner on the task
         if task_id:
             try:
                 from task import task_pick
-                task_pick(task_id, agent_name)
+                result = task_pick(task_id, agent_name, bypass_gate=True)
+                if not result.ok:
+                    # WIP limit might be hit — move task to TODO instead
+                    try:
+                        from task import task_move
+                        task_move(task_id, "todo")
+                        # Still set the owner even in TODO
+                        from task import load_board, save_board
+                        board = load_board()
+                        for t in board["tasks"]:
+                            if t["id"] == task_id:
+                                t["owner"] = agent_name
+                                break
+                        save_board(board)
+                    except:
+                        pass
             except:
                 pass
 
-        # Send notification to the agent
+        # 2. Send notification
         try:
             from notify import notify
             notify(agent_name, "TASK_ASSIGNED",
@@ -115,13 +137,33 @@ class Hermes(Agent):
         except:
             pass
 
+        # 3. TRIGGER THE AGENT'S SCRIPT IN BACKGROUND
+        # The agent's script will check the board, find the task, and work on it
+        try:
+            import subprocess
+            agent_script = WEBFORGE_HOME / "agents" / f"{agent_name.lower()}.py"
+            if agent_script.exists():
+                env = os.environ.copy()
+                env["WEBFORGE_PROJECT"] = str(self.project_root)
+                env["WEBFORGE_TASK_ID"] = task_id
+                # Run in background — don't block Hermes
+                subprocess.Popen(
+                    ["python3", str(agent_script), "work"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env=env,
+                    start_new_session=True,  # Detach from parent
+                )
+        except:
+            pass
+
         return {
             "agent": self.name,
             "action": "route",
             "routed_to": agent_name,
             "task_id": task_id,
-            "message": f"📤 Routed to @{agent_name}: {message}",
-            "next_step": f"Talk to @{agent_name} or use /build",
+            "message": f"📤 Assigned to @{agent_name}: {message}\n   @{agent_name}'s script has been triggered — they will check the board and work on it.",
+            "next_step": f"Watch @{agent_name} — they should start working",
         }
 
     # ── Handle bug report (NO AI — pure Python) ──

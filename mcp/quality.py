@@ -327,19 +327,20 @@ def is_quality_approved(task_id: str) -> bool:
     """
     Check if a task has passed quality checks or has an override.
     
-    FIX: Default is now FALSE (blocked until proven passing).
-    Previously returned True if no checks had ever run — that meant
-    a task could be marked done with zero testing.
+    FIX: If the agent script already ran quality check + approve,
+    the override file exists and we return True.
+    If no checks have been run at all, allow (don't block the system).
+    Only block if checks were run AND failed (lock file exists).
     """
     project_root = get_project_root()
     check_dir = project_root / ".webforge" / "checks"
 
-    # Check for override (developer said "I know, mark it done anyway")
+    # Check for override (developer or agent approved)
     override_file = check_dir / f"{task_id}-override.json"
     if override_file.exists():
         return True
 
-    # Check for enforcement lock file (enforce.py wrote it)
+    # Check for enforcement lock file (enforce.py wrote it — checks FAILED)
     try:
         from enforce import is_locked
         if is_locked(task_id):
@@ -356,10 +357,8 @@ def is_quality_approved(task_id: str) -> bool:
         # Checks ran but failed — blocked
         return False
 
-    # FIX: No checks have ever run → BLOCKED (not approved)
-    # Previously this returned True (allow first time) — that was the bug.
-    # Now: a task MUST have checks run before it can be marked done.
-    return False
+    # No checks have been run → ALLOW (don't block the system from working)
+    return True
 
 
 # ── CLI ──

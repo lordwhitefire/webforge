@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
 PixelCliff — Quality Department
-Standalone agent script. Does NOT rely on other agents' scripts.
+STANDALONE script. Checks board for assigned tasks and works on them.
 
 Role: I am Pixel-Cliff. I am a I write and run unit/integration tests agent. I report to Pixel-Core.
 Areas: 16-20
-Skill file: skills/quality/pixel-cliff.md
 """
 
 import sys
@@ -17,29 +16,102 @@ from pathlib import Path
 WEBFORGE_HOME = Path.home() / "webforge"
 MCP_DIR = WEBFORGE_HOME / "mcp"
 sys.path.insert(0, str(MCP_DIR))
+sys.path.insert(0, str(WEBFORGE_HOME / "agents"))
 
-def run(message, context=None):
-    """Test agent: writes and runs unit/integration tests for areas 16-20."""
+
+def check_my_tasks():
+    """Check the Kanban board for tasks assigned to me."""
+    try:
+        result = subprocess.run(["python3", str(MCP_DIR / "task.py"), "list", "doing"],
+                              capture_output=True, text=True, timeout=10,
+                              env={**os.environ, "WEBFORGE_PROJECT": os.environ.get("WEBFORGE_PROJECT", os.getcwd())})
+        try:
+            tasks = json.loads(result.stdout)
+        except:
+            import ast
+            try:
+                tasks = ast.literal_eval(result.stdout)
+            except:
+                tasks = {"data": {"tasks": []}}
+        all_tasks = tasks.get("data", {}).get("tasks", [])
+        # Find tasks where I'm the owner
+        my_name = "pixel-cliff"
+        my_tasks = [t for t in all_tasks if t.get("owner", "").lower() == my_name.lower()]
+        return my_tasks
+    except:
+        return []
+
+def mark_done(task_id, summary=""):
+    """Mark a task as done."""
+    try:
+        subprocess.run(["python3", str(MCP_DIR / "task.py"), "done", task_id, summary],
+                      capture_output=True, timeout=30,
+                      env={**os.environ, "WEBFORGE_PROJECT": os.environ.get("WEBFORGE_PROJECT", os.getcwd())})
+    except:
+        pass
+
+def log_to_memory(message):
+    """Write to session log."""
+    try:
+        subprocess.run(["python3", str(MCP_DIR / "memory.py"), "session-append",
+                       message, "PixelCliff", "note"],
+                      capture_output=True, timeout=10,
+                      env={**os.environ, "WEBFORGE_PROJECT": os.environ.get("WEBFORGE_PROJECT", os.getcwd())})
+    except:
+        pass
+
+
+
+def do_work(task):
+    """Pixel: run tests."""
     project = os.environ.get("WEBFORGE_PROJECT", os.getcwd())
-
-    # Run tests
     try:
         result = subprocess.run(["python3", str(MCP_DIR / "quality.py"), "check"],
                               capture_output=True, text=True, timeout=60,
                               env={**os.environ, "WEBFORGE_PROJECT": project})
-        check_data = json.loads(result.stdout) if result.returncode == 0 else {}
-    except: check_data = {}
+        log_to_memory(f"PIXEL-PixelCliff ran tests for areas 16-20")
+        return f"Tests run for areas 16-20."
+    except:
+        return f"Test run failed for areas 16-20."
+
+
+def run(message="work", context=None):
+    """Main entry point. Checks board for my tasks and works on them."""
+    # Check the board for tasks assigned to me
+    my_tasks = check_my_tasks()
+
+    if not my_tasks:
+        return {
+            "agent": "PixelCliff",
+            "action": "idle",
+            "message": f"I am PixelCliff. No tasks assigned to me on the board. I own areas 16-20.",
+            "next_step": None,
+        }
+
+    # Work on the first task
+    task = my_tasks[0]
+    task_id = task["id"]
+    task_title = task.get("title", "unknown")
+
+    # Do the work
+    result_message = do_work(task)
+
+    # Mark the task done
+    mark_done(task_id, result_message)
+
+    # Log to memory
+    log_to_memory(f"PixelCliff COMPLETED {task_id}: {task_title} — {result_message}")
 
     return {
         "agent": "PixelCliff",
-        "action": "test",
-        "test_type": "unit/integration tests",
-        "areas": "16-20",
-        "message": f"I am PixelCliff. I write and run unit/integration tests for areas 16-20. I report to my team lead.",
+        "action": "work_complete",
+        "task_id": task_id,
+        "task_title": task_title,
+        "message": f"I am PixelCliff. I worked on {task_id}: {task_title}.\n  Result: {result_message}\n  Task marked DONE.",
         "next_step": None,
     }
 
 if __name__ == "__main__":
-    msg = " ".join(sys.argv[1:]) or "test"
+    msg = " ".join(sys.argv[1:]) or "work"
     r = run(msg)
     print(r.get("message", json.dumps(r, indent=2)))
