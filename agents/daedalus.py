@@ -103,14 +103,33 @@ class Daedalus(Agent):
 
         data should contain:
           - agent_name: which agent to patch (e.g. "hermes")
-          - rule_name: short name for the rule
           - pattern: what pattern to block (e.g. "localStorage")
+          - rule_name: short name for the rule
           - description: human-readable description
         """
-        agent_name = data.get("agent_name", data.get("message", "")).lower().strip()
-        pattern = data.get("pattern", data.get("message", ""))
+        agent_name = data.get("agent_name", "").lower().strip()
+        pattern = data.get("pattern", "")
         rule_name = data.get("rule_name", f"rule_{pattern[:20].replace(' ', '_')}")
         description = data.get("description", f"Block pattern: {pattern}")
+
+        # If agent_name is empty, try to parse from message
+        if not agent_name:
+            message = data.get("message", "")
+            import re as _re
+            agent_match = _re.search(r'(?:to|into)\s+(\w+(?:-\w+)*)\s+(?:blocking|block|preventing)', message.lower())
+            if agent_match:
+                agent_name = agent_match.group(1)
+            pattern_match = _re.search(r'blocking\s+(.+?)(?:$|\.)', message.lower())
+            if pattern_match:
+                pattern = pattern_match.group(1).strip()
+
+        if not agent_name or not pattern:
+            return {
+                "agent": self.name,
+                "action": "add_correction_rule",
+                "message": "Could not parse agent name or pattern. Usage: add rule to <agent> blocking <pattern>",
+                "next_step": None,
+            }
 
         # Find the agent's script
         agent_file = self.AGENTS_DIR / f"{agent_name}.py"
