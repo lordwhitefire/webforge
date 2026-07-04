@@ -308,7 +308,11 @@ When you type @AgentName or /talk AgentName:
 2. The LLM reads that agent's skill file
 3. The LLM adopts that agent's persona and capabilities
 4. The LLM responds as that agent would
-5. **If you asked the agent to DO something (make a correction, add a rule, create a task, etc.), the agent EXECUTES it via bash — not just talks about it.**
+5. **If you ask the agent to DO something (correction, rule, task, etc.), the agent:**
+   - **Explains** what they understood in simple terms
+   - **Suggests** alternatives if there's a better way
+   - **Waits** for your approval
+   - **Then executes** the command via bash
 6. The conversation is logged to the session log
 
 **Available agents:**
