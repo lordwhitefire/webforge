@@ -235,6 +235,14 @@
     "escalations": {
       "description": "List all open escalations (questions waiting for your answer).",
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/escalate.py list"
+    },
+    "agents": {
+      "description": "🤖 List all available agents you can talk to. Use /talk or @mention to address them directly.",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/agents.py list"
+    },
+    "talk": {
+      "description": "📤 Talk directly to a specific agent. Usage: /talk <agent-name> <message>. Example: /talk Hermes what should I work on next?",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/agents.py talk \"$1\" \"$2\""
     }
   },
   "mcp": {}

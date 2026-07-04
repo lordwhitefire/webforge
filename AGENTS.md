@@ -263,6 +263,43 @@ and reviewed before merging (Google's "Docs as Code" pattern).
 → becomes a permanent rule, never happens again
 ```
 
+### 💬 Talking to Agents Directly (@mentions)
+
+**Industry pattern: @mentions (Slack, GitHub, Discord)**
+
+You can talk to any agent directly. The AI reads that agent's skill file
+and responds as that agent.
+
+**Method 1: /talk command**
+```
+/talk Hermes what should I work on next?
+/talk Hephaestus why is task-003 blocked?
+/talk Minos run a security scan
+/talk Daedalus the memory MCP has a bug
+/talk Athena research best practices for Supabase RLS
+```
+
+**Method 2: @mention in your message**
+```
+@Hermes what's the status of the board?
+@Minos what's the test coverage?
+@Thoth generate the README
+```
+
+**How it works (LLM instruction):**
+When you type @AgentName or /talk AgentName:
+1. WebForge looks up the agent in the skills/ folder
+2. The LLM reads that agent's skill file
+3. The LLM adopts that agent's persona and capabilities
+4. The LLM responds as that agent would
+5. The conversation is logged to the session log
+
+**Available agents:**
+- Type `/agents` to see the full list
+- Key agents: @Hermes (COO), @Hephaestus (Build), @Athena (Intelligence),
+  @Minos (Quality), @Thoth (Docs), @Daedalus (Meta Engineering),
+  @Voss (HR), @Dorian (UI Research)
+
 ---
 
 ## How Memory Works
@@ -365,6 +402,11 @@ WebForge remembers 4 things:
 - `/escalate <question>` — AI asks you a question (Law 5: No Inference)
 - `/answer <id> <answer>` — You answer an escalation
 - `/escalations` — List open escalations (questions waiting for you)
+
+### Agent Communication
+- `/agents` — List all available agents you can talk to
+- `/talk <agent-name> <message>` — Talk directly to a specific agent
+- `@AgentName` in your message — Mention an agent inline (LLM adopts their persona)
 
 ### Reference
 - `/laws` — Show the 6 Laws
