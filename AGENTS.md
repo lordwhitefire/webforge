@@ -355,6 +355,35 @@ Every task event automatically sends a notification to the relevant agent's inbo
 
 Nobody is left in the dark. Every event pings the right people.
 
+### 🏃 Chain Runner — Automatic Execution
+
+The Chain Runner makes agents work like sub-agents — launch once, they run until done.
+
+**How it works:**
+1. When a task is created and auto-routed to a department, I automatically run the chain
+2. I launch sub-agents for each level (director → head → senior → junior)
+3. Each sub-agent runs autonomously — does the work, reports back
+4. The chain ONLY stops if a CEO decision is needed
+5. Results flow back up automatically
+
+**The flow:**
+```
+/task "Add login page" feature
+  → Auto-dispatched to @Hephaestus ✓
+  → Chain Runner launches sub-agents:
+       @Hephaestus → @Aurora → @Lead-Faro → @Sr-Hale → @Jr-Hawk
+  → @Jr-Hawk writes the code (autonomously)
+  → Reports back up: Jr → Sr → Lead → Aurora → Hephaestus → CEO
+  → Only stops if: "CEO, I need you to decide X"
+```
+
+**Commands:**
+- `/run-chain <task-id>` — Show the chain plan and execute it
+- `/chain-plan <task-id>` — Preview the chain without running
+
+**AI instruction:** When you see a task created + routed, call `/run-chain` automatically.
+Do NOT wait for the user to ask. The chain runs until done or stuck.
+
 ---
 
 ## How Memory Works

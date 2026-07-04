@@ -283,6 +283,14 @@
     "dispatch-pending": {
       "description": "📬 Show all tasks that haven't been routed yet.",
       "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/dispatch.py pending"
+    },
+    "run-chain": {
+      "description": "🏃 Run the entire chain of command for a task autonomously. Launches sub-agents at each level. Only stops if a CEO decision is needed. Usage: /run-chain <task-id>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/chain.py plan \"$1\""
+    },
+    "chain-plan": {
+      "description": "🔍 Show the chain plan for a task without running it. Usage: /chain-plan <task-id>",
+      "template": "WEBFORGE_PROJECT=\"$OPENCODE_CWD\" python3 $HOME/webforge/mcp/chain.py plan \"$1\""
     }
   },
   "mcp": {}
