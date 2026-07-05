@@ -233,11 +233,13 @@ class Agent:
         Call the AI via OpenCode CLI.
 
         PRINCIPLE: The script is the body. OpenCode is the brain.
-        No API key needed — OpenCode uses whatever model is configured
-        (free models work).
+        No API key needed — OpenCode uses whatever model is configured.
 
-        The script calls `opencode run "prompt"` which returns the AI's
-        response. The script then parses it and decides what to do.
+        This method builds a focused prompt via ContextBuilder (solving
+        context rot — every call gets exactly the context it needs, not
+        the full skill file). The full AI response is written to the run
+        directory; only the parsed JSON summary is returned to keep the
+        orchestrator lean.
 
         Args:
             instruction: What the AI needs to reason about
@@ -246,12 +248,80 @@ class Agent:
         Returns:
             dict parsed from AI's response
         """
+        # ── Use ContextBuilder for focused prompts (solves context rot) ──
+        try:
+            from context import ask_ai_focused
+
+            # Determine task_id and call_type from context
+            task_id = ""
+            call_type = "answer"  # default
+
+            # Try to infer from instruction
+            inst_lower = instruction.lower()
+            if any(w in inst_lower for w in ["fix", "bug", "broken", "error"]):
+                call_type = "code"
+            elif any(w in inst_lower for w in ["review", "check"]):
+                call_type = "review"
+            elif any(w in inst_lower for w in ["research", "investigate", "find out"]):
+                call_type = "research"
+            elif any(w in inst_lower for w in ["plan", "design"]):
+                call_type = "plan"
+            elif any(w in inst_lower for w in ["test", "spec"]):
+                call_type = "test"
+            elif any(w in inst_lower for w in ["document", "readme"]):
+                call_type = "docs"
+            elif any(w in inst_lower for w in ["debug", "diagnose"]):
+                call_type = "debug"
+            elif any(w in inst_lower for w in ["refactor", "restructure"]):
+                call_type = "refactor"
+
+            run_id = os.environ.get("WEBFORGE_RUN_ID", "")
+
+            result = ask_ai_focused(
+                agent_name=self.name,
+                task_id=task_id,
+                call_type=call_type,
+                instruction=instruction,
+                response_format=response_format,
+                run_id=run_id if run_id else None,
+            )
+
+            if result.get("status") != "ok":
+                return {
+                    "status": "error",
+                    "message": result.get("error", "OpenCode call failed"),
+                    "action": "",
+                }
+
+            response = result["response"]
+
+            # Log the AI interaction
+            self._log(f"ask_ai → {self.name}: {instruction[:100]}...")
+
+            # Check correction rules on the response
+            message_text = response.get("message", "") or response.get("summary", "")
+            passed, reason = self._check_correction_rules(message_text)
+            if not passed:
+                return {
+                    "status": "correction_violated",
+                    "action": "refused",
+                    "message": f"AI response violated correction rule: {reason}",
+                }
+
+            return response
+
+        except ImportError:
+            # ContextBuilder not available — fall back to old behavior
+            pass
+        except Exception as e:
+            # Log and fall back
+            self._log(f"ask_ai_focused failed ({e}), falling back to old behavior")
+
+        # ── Fallback: old prompt construction (for backward compat) ──
         from ai_client import ask_opencode
 
         skill = self._load_skill()
 
-        # Build the full prompt for OpenCode
-        # This is what OpenCode's LLM will see
         full_prompt = (
             f"You are {self.name}. {self.department} department.\n\n"
             f"Your role:\n{skill[:1500]}\n\n"
@@ -264,7 +334,6 @@ class Agent:
             "Never suggest actions outside your role. Stay in character."
         )
 
-        # Call OpenCode (blocking — waits for AI response)
         result = ask_opencode(full_prompt, timeout=120)
 
         if result["status"] != "ok":
@@ -274,24 +343,19 @@ class Agent:
                 "action": "",
             }
 
-        # Parse the AI's response
         response_text = result["response"]
 
-        # Try to parse as JSON
         try:
             response = json.loads(response_text)
         except:
-            # If not JSON, wrap it
             response = {
                 "status": "ok",
                 "message": response_text,
                 "action": "respond",
             }
 
-        # Log the AI interaction
         self._log(f"ask_ai → {self.name}: {instruction[:100]}...")
 
-        # Check correction rules on the response
         message_text = response.get("message", "")
         passed, reason = self._check_correction_rules(message_text)
         if not passed:

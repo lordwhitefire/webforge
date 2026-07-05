@@ -28,6 +28,7 @@ import os
 import sys
 import json
 import hashlib
+import fcntl
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -98,44 +99,57 @@ def info() -> dict:
 
 # ── Session log ──
 def session_append(entry: str, agent: str = "Unknown", kind: str = "note") -> McpResult:
-    """Append an entry to today's session log."""
+    """Append an entry to today's session log. File-locked for concurrency safety."""
     log_file = session_log_file()
+    lock_file = log_file.parent / f".{log_file.name}.lock"
 
-    lines = 0
-    if log_file.exists():
-        lines = sum(1 for _ in log_file.open())
+    # Use a separate lock file so we don't corrupt the log itself
+    lock_file.touch(exist_ok=True)
+    try:
+        with lock_file.open("r+") as lf:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_EX)  # blocks until we get the lock
 
-    if lines >= 240:
-        month = datetime.now(timezone.utc).strftime("%Y-%m")
-        parts = list((webforge_dir() / "memory").glob(f"session-{month}-part-*.md"))
-        next_part = len(parts) + 1
-        new_name = log_file.parent / f"session-{month}-part-{next_part:02d}.md"
-        log_file.rename(new_name)
-        log_file = session_log_file()
-        log_file.write_text(f"# Session log — {month} (part {next_part + 1})\n\nContinued from {new_name.name}.\n\n---\n\n")
+            lines = 0
+            if log_file.exists():
+                with log_file.open() as f:
+                    lines = sum(1 for _ in f)
 
-    timestamp = utc_now()
-    kind_emoji = {
-        "note": "📝",
-        "decision": "✅",
-        "correction": "⚠️",
-        "stop": "🛑",
-        "resume": "▶️",
-        "rule": "📏",
-        "preference": "❤️",
-    }.get(kind, "📝")
+            if lines >= 240:
+                month = datetime.now(timezone.utc).strftime("%Y-%m")
+                parts = list((webforge_dir() / "memory").glob(f"session-{month}-part-*.md"))
+                next_part = len(parts) + 1
+                new_name = log_file.parent / f"session-{month}-part-{next_part:02d}.md"
+                log_file.rename(new_name)
+                log_file = session_log_file()
+                log_file.write_text(f"# Session log — {month} (part {next_part + 1})\n\nContinued from {new_name.name}.\n\n---\n\n")
 
-    line = f"- **[{timestamp}]** {kind_emoji} **{agent}**: {entry}\n"
+            timestamp = utc_now()
+            kind_emoji = {
+                "note": "📝",
+                "decision": "✅",
+                "correction": "⚠️",
+                "stop": "🛑",
+                "resume": "▶️",
+                "rule": "📏",
+                "preference": "❤️",
+            }.get(kind, "📝")
 
-    if not log_file.exists() or log_file.stat().st_size == 0:
-        log_file.write_text(f"# Session log — {datetime.now(timezone.utc).strftime('%Y-%m')}\n\n---\n\n")
+            line = f"- **[{timestamp}]** {kind_emoji} **{agent}**: {entry}\n"
 
-    with log_file.open("a", encoding="utf-8") as f:
-        f.write(line)
+            if not log_file.exists() or log_file.stat().st_size == 0:
+                log_file.write_text(f"# Session log — {datetime.now(timezone.utc).strftime('%Y-%m')}\n\n---\n\n")
 
-    write_log("Memory", agent, "session_append",
-              {"kind": kind, "chars": len(entry), "file": log_file.name})
-    return success({"file": log_file.name, "kind": kind})
+            with log_file.open("a", encoding="utf-8") as f:
+                f.write(line)
+
+        write_log("Memory", agent, "session_append",
+                  {"kind": kind, "chars": len(entry), "file": log_file.name})
+        return success({"file": log_file.name, "kind": kind})
+    except Exception as e:
+        # Don't let session-append failure break the caller
+        write_log("Memory", agent, "session_append_failed",
+                  {"kind": kind, "error": str(e)})
+        return fail(f"session_append failed (non-fatal): {e}")
 
 
 def session_read(days: int = 7) -> McpResult:

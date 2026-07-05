@@ -93,77 +93,198 @@ class Hermes(Agent):
     def _assign_to_agent(self, agent_name: str, message: str, task_id: str = "") -> dict:
         """
         Assign a task to an agent AND TRIGGER THEIR SCRIPT.
-        
-        1. Sets the owner on the task (task_pick) → board shows @agent_name
-        2. Sends notification → blue dot on agent
-        3. TRIGGERS the agent's script in background → agent checks board, finds task, works
-        
+
+        Uses the new infrastructure:
+          1. task_pick (SQLite, WIP-bypass for Hermes explicit assignments)
+          2. Mailbox.send (real inter-agent messaging with ack/reply semantics)
+          3. runs.create_run + start_run (crash recovery, on-disk state)
+          4. Agent script triggered in background, logs to .webforge/runs/<run_id>/
+
         The agent's script will:
-          - Check the board for tasks with their name as owner
-          - Find the task
-          - Execute it (call opencode for code, run checks for quality, etc.)
-          - Mark done when complete
-          - Notify Hermes
+          - Check its mailbox for TASK_ASSIGNED messages
+          - ACK the task (sender gets notified)
+          - Checkpoint progress (resumable if crashed)
+          - Execute the work
+          - Mark task done + send TASK_DONE message
         """
-        # 1. Set the owner on the task
+        import subprocess
+
+        # 1. Set the owner on the task — bypass_gate=True (Hermes is authoritative)
+        pick_ok = True
+        pick_error = ""
         if task_id:
             try:
                 from task import task_pick
                 result = task_pick(task_id, agent_name, bypass_gate=True)
                 if not result.ok:
-                    # WIP limit might be hit — move task to TODO instead
+                    pick_ok = False
+                    pick_error = result.error or "unknown pick error"
+                    # Pick failed — at least set the owner in place
                     try:
-                        from task import task_move
-                        task_move(task_id, "todo")
-                        # Still set the owner even in TODO
-                        from task import load_board, save_board
-                        board = load_board()
-                        for t in board["tasks"]:
-                            if t["id"] == task_id:
-                                t["owner"] = agent_name
-                                break
-                        save_board(board)
-                    except:
+                        import state as _state
+                        _state.execute(
+                            "UPDATE tasks SET owner=? WHERE id=?",
+                            (agent_name, task_id)
+                        )
+                    except Exception:
                         pass
-            except:
+            except Exception as e:
+                pick_ok = False
+                pick_error = str(e)
+
+        # 2. Create a run record (for crash recovery + on-disk state)
+        run_id = None
+        run_dir_path = None
+        try:
+            from runs import create_run, start_run, run_dir
+            run = create_run(
+                task_id=task_id,
+                agent=agent_name,
+                trigger=self.name,
+                input_data={"message": message, "task_id": task_id},
+            )
+            run_id = run["id"]
+            run_dir_path = run["run_dir"]
+        except Exception as e:
+            # Run creation failed — agent can still run, but no crash recovery
+            try:
+                from memory import session_append
+                session_append(
+                    f"HERMES WARNING — could not create run for {agent_name}: {e}",
+                    agent=self.name, kind="note"
+                )
+            except Exception:
                 pass
 
-        # 2. Send notification
+        # 3. Send TASK_ASSIGNED message via Mailbox (replaces notify.py)
         try:
-            from notify import notify
-            notify(agent_name, "TASK_ASSIGNED",
-                   f"Task {task_id}: {message}" if task_id else message,
-                   task_id, from_agent=self.name)
-        except:
-            pass
+            from mailbox import Mailbox
+            mb = Mailbox(self.name)
+            mb.send(
+                to=agent_name,
+                msg_type="TASK_ASSIGNED",
+                subject=f"Task {task_id}: {message[:80]}" if task_id else message[:80],
+                body=message if not task_id else f"Task {task_id}: {message}",
+                task_id=task_id if task_id else None,
+                priority=1,  # high priority — task assignment
+            )
+            # Also notify the Developer (CEO) so the chat panel shows the route
+            mb.send(
+                to="Developer",
+                msg_type="TASK_ASSIGNED",
+                subject=f"@{agent_name} assigned: {message[:60]}",
+                body=f"@{agent_name} was assigned task {task_id}: {message}"
+                     if task_id else f"@{agent_name} routed: {message}",
+                task_id=task_id if task_id else None,
+            )
+        except Exception as e:
+            try:
+                from memory import session_append
+                session_append(
+                    f"HERMES WARNING — mailbox send failed: {e}",
+                    agent=self.name, kind="note"
+                )
+            except Exception:
+                pass
 
-        # 3. TRIGGER THE AGENT'S SCRIPT IN BACKGROUND
-        # The agent's script will check the board, find the task, and work on it
+        # If pick failed, send a visible block notification
+        if not pick_ok:
+            try:
+                from mailbox import Mailbox
+                Mailbox(self.name).send(
+                    to="Developer",
+                    msg_type="TASK_BLOCKED",
+                    subject=f"Could not move {task_id} to DOING",
+                    body=f"Pick error: {pick_error}",
+                    task_id=task_id if task_id else None,
+                    priority=2,  # urgent
+                )
+            except Exception:
+                pass
+
+        # 4. TRIGGER THE AGENT'S SCRIPT IN BACKGROUND
+        # Logs go to .webforge/runs/<run_id>/transcript.log (not DEVNULL)
+        triggered = False
         try:
-            import subprocess
             agent_script = WEBFORGE_HOME / "agents" / f"{agent_name.lower()}.py"
             if agent_script.exists():
                 env = os.environ.copy()
                 env["WEBFORGE_PROJECT"] = str(self.project_root)
                 env["WEBFORGE_TASK_ID"] = task_id
-                # Run in background — don't block Hermes
-                subprocess.Popen(
+                env["WEBFORGE_AGENT_TRIGGER"] = self.name
+                if run_id:
+                    env["WEBFORGE_RUN_ID"] = run_id
+
+                # Log to run directory if available, else to .webforge/logs/
+                if run_dir_path:
+                    from pathlib import Path
+                    log_fp = open(Path(run_dir_path) / "transcript.log", "a")
+                else:
+                    log_dir = self.project_root / ".webforge" / "logs"
+                    log_dir.mkdir(parents=True, exist_ok=True)
+                    log_fp = open(log_dir / f"{agent_name.lower()}.log", "w")
+
+                proc = subprocess.Popen(
                     ["python3", str(agent_script), "work"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=log_fp,
+                    stderr=subprocess.STDOUT,
                     env=env,
                     start_new_session=True,  # Detach from parent
                 )
-        except:
-            pass
+
+                # Mark run as started (records the pid for the reaper)
+                if run_id:
+                    try:
+                        from runs import start_run
+                        start_run(run_id, proc.pid)
+                    except Exception:
+                        pass
+
+                triggered = True
+        except Exception as e:
+            try:
+                from memory import session_append
+                session_append(
+                    f"HERMES ERROR — failed to trigger {agent_name}: {e}",
+                    agent=self.name, kind="error"
+                )
+            except Exception:
+                pass
+
+        # Compose a visible message — tell the user what happened
+        if not pick_ok:
+            return {
+                "agent": self.name,
+                "action": "route",
+                "routed_to": agent_name,
+                "task_id": task_id,
+                "run_id": run_id,
+                "message": (
+                    f"📤 Routed to @{agent_name}: {message}\n"
+                    f"   ⚠️ Could not move task to DOING: {pick_error}\n"
+                    f"   Task stays in TODO with @{agent_name} as owner.\n"
+                    f"   {'✅ Agent script triggered (run ' + run_id + ').' if triggered and run_id else '✅ Agent script triggered.' if triggered else '❌ Agent script NOT triggered.'}"
+                ),
+                "next_step": f"Watch @{agent_name} — they should still pick it up from TODO",
+            }
 
         return {
             "agent": self.name,
             "action": "route",
             "routed_to": agent_name,
             "task_id": task_id,
-            "message": f"📤 Assigned to @{agent_name}: {message}\n   @{agent_name}'s script has been triggered — they will check the board and work on it.",
-            "next_step": f"Watch @{agent_name} — they should start working",
+            "run_id": run_id,
+            "message": (
+                f"📤 Assigned to @{agent_name}: {message}\n"
+                f"   Task moved to DOING. @{agent_name}'s script triggered.\n"
+                f"   {'Run ' + run_id + ' created — crash-recoverable.' if run_id else ''}\n"
+                f"   @{agent_name} will:\n"
+                f"     1. Check mailbox (ACK sent back to you)\n"
+                f"     2. Checkpoint progress (resumable)\n"
+                f"     3. Execute the work\n"
+                f"     4. Mark done + send TASK_DONE"
+            ),
+            "next_step": f"Watch @{agent_name} — they should ACK shortly",
         }
 
     # ── Handle bug report (NO AI — pure Python) ──
@@ -183,15 +304,18 @@ class Hermes(Agent):
         task_id = task_result.get("id", "unknown")
 
         # Assign to Hephaestus (makes him yellow on UI)
-        self._assign_to_agent("Hephaestus", f"Bug fix: {title}", task_id)
+        assign_result = self._assign_to_agent("Hephaestus", f"Bug fix: {title}", task_id)
+        run_id = assign_result.get("run_id") if isinstance(assign_result, dict) else None
 
         return {
             "agent": self.name, "action": "create_bugfix_task",
             "task_id": task_id, "routed_to": "Hephaestus",
+            "run_id": run_id,
             "message": (
                 f"Got it. I've created {task_id} (bugfix) and assigned it to @Hephaestus.\n"
-                f"  Bug: {title}\n\n"
-                f"To start: /build\n"
+                f"  Bug: {title}\n"
+                + (f"  Run {run_id} created — crash-recoverable.\n" if run_id else "")
+                + f"\nTo start: /build\n"
                 f"I will NOT fix this myself — that's @Hephaestus's job.\n"
                 f"You should see @Hephaestus light up (yellow = working)."
             ),
@@ -217,15 +341,18 @@ class Hermes(Agent):
         task_id = task_result.get("id", "unknown")
 
         # Assign to Hephaestus (makes him yellow on UI)
-        self._assign_to_agent("Hephaestus", f"Feature: {title}", task_id)
+        assign_result = self._assign_to_agent("Hephaestus", f"Feature: {title}", task_id)
+        run_id = assign_result.get("run_id") if isinstance(assign_result, dict) else None
 
         return {
             "agent": self.name, "action": "create_feature_task",
             "task_id": task_id, "routed_to": "Hephaestus",
+            "run_id": run_id,
             "message": (
                 f"Great idea. I've created {task_id} (feature) and assigned it to @Hephaestus.\n"
                 f"  Feature: {title}\n"
-                f"  ⚠️ One-way door — RFC will be generated when you approve.\n\n"
+                + (f"  Run {run_id} created — crash-recoverable.\n" if run_id else "")
+                + f"  ⚠️ One-way door — RFC will be generated when you approve.\n\n"
                 f"To start: /build\n"
                 f"You should see @Hephaestus light up (yellow = working)."
             ),
@@ -307,15 +434,18 @@ class Hermes(Agent):
         task_id = task_result.get("id", "unknown")
 
         # Assign to Hephaestus (makes him yellow on UI)
-        self._assign_to_agent("Hephaestus", f"Clone repo: {repo_url}", task_id)
+        assign_result = self._assign_to_agent("Hephaestus", f"Clone repo: {repo_url}", task_id)
+        run_id = assign_result.get("run_id") if isinstance(assign_result, dict) else None
 
         return {
             "agent": self.name, "action": "clone_project",
             "task_id": task_id, "routed_to": "Hephaestus",
+            "run_id": run_id,
             "message": (
                 f"Got it. I've created {task_id} and assigned it to @Hephaestus.\n"
-                f"  Repo: {repo_url}\n\n"
-                f"I will handle this — you don't need to talk to @Hephaestus directly.\n"
+                f"  Repo: {repo_url}\n"
+                + (f"  Run {run_id} created — crash-recoverable.\n" if run_id else "")
+                + f"\nI will handle this — you don't need to talk to @Hephaestus directly.\n"
                 f"You should see @Hephaestus light up (yellow = working).\n"
                 f"I'll let you know when it's done."
             ),
