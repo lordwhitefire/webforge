@@ -118,7 +118,7 @@ def task_create(title: str, task_type: str = "feature", area: str = "",
         write_log("Task", "Hephaestus", "auto_dispatch_failed",
                   {"task_id": task_id, "error": str(e)})
 
-    # ── SEND NOTIFICATION (mailbox if available, else notify.py) ──
+    # ── SEND NOTIFICATION via Mailbox ──
     try:
         from mailbox import Mailbox
         Mailbox("Hermes").send(
@@ -128,13 +128,6 @@ def task_create(title: str, task_type: str = "feature", area: str = "",
                  f"Suggested route: Hephaestus (build).",
             task_id=task_id,
         )
-    except ImportError:
-        # Fall back to legacy notify.py if mailbox not yet wired
-        try:
-            from notify import notify_task_created
-            notify_task_created(task_id, title, task_type, from_agent="Developer")
-        except ImportError:
-            pass
     except Exception as e:
         write_log("Task", "Hephaestus", "notify_failed",
                   {"task_id": task_id, "error": str(e)})
@@ -311,7 +304,7 @@ def task_pick(task_id: str, agent: str, bypass_gate: bool = False) -> McpResult:
     write_log("Task", agent, "task_pick",
               {"id": task_id, "title": task["title"]})
 
-    # ── SEND NOTIFICATION ──
+    # ── SEND NOTIFICATION via Mailbox ──
     try:
         from mailbox import Mailbox
         Mailbox("Hermes").send(
@@ -320,12 +313,6 @@ def task_pick(task_id: str, agent: str, bypass_gate: bool = False) -> McpResult:
             body=f"You have been assigned task {task_id}: {task['title']}. Start working on it.",
             task_id=task_id,
         )
-    except ImportError:
-        try:
-            from notify import notify_task_assigned
-            notify_task_assigned(task_id, task["title"], agent, from_agent="Hermes")
-        except ImportError:
-            pass
     except Exception as e:
         write_log("Task", agent, "notify_failed",
                   {"task_id": task_id, "error": str(e)})
@@ -392,7 +379,7 @@ def task_done(task_id: str, summary: str = "") -> McpResult:
     write_log("Task", task.get("owner", "Hephaestus"), "task_done",
               {"id": task_id, "title": task["title"]})
 
-    # ── SEND NOTIFICATION ──
+    # ── SEND NOTIFICATIONS via Mailbox ──
     try:
         from mailbox import Mailbox
         done_by = task.get("owner") or "Hephaestus"
@@ -410,13 +397,6 @@ def task_done(task_id: str, summary: str = "") -> McpResult:
                  f"Run quality check: /check {task_id}",
             task_id=task_id,
         )
-    except ImportError:
-        try:
-            from notify import notify_task_done
-            done_by = task.get("owner") or "Hephaestus"
-            notify_task_done(task_id, task["title"], done_by, from_agent=done_by)
-        except ImportError:
-            pass
     except Exception as e:
         write_log("Task", done_by, "notify_failed",
                   {"task_id": task_id, "error": str(e)})
@@ -448,12 +428,6 @@ def task_block(task_id: str, reason: str) -> McpResult:
             body=f"Task {task_id} blocked: {reason}",
             task_id=task_id, priority=1,
         )
-    except ImportError:
-        try:
-            from notify import notify_task_blocked
-            notify_task_blocked(task_id, task["title"], reason, from_agent="Hephaestus")
-        except ImportError:
-            pass
     except Exception as e:
         write_log("Task", "Hephaestus", "notify_failed",
                   {"task_id": task_id, "error": str(e)})
