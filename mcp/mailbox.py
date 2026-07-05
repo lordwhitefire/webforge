@@ -93,9 +93,15 @@ class Mailbox:
 
     def send(self, to: str, msg_type: str, subject: str = "", body: str = "",
              task_id: str = None, parent_id: str = None,
-             priority: int = PRIORITY_NORMAL) -> str:
+             priority: int = PRIORITY_NORMAL, bypass_chain: bool = False) -> str:
         """
         Send a message to another agent's mailbox.
+
+        CHAIN-OF-COMMAND ENFORCEMENT:
+        The recipient (to) must be either:
+          - The sender's direct superior (reports_to)
+          - One of the sender's direct subordinates
+        Messages outside this chain are REJECTED unless bypass_chain=True.
 
         Args:
             to: Recipient agent name
@@ -105,13 +111,47 @@ class Mailbox:
             task_id: Related task (optional)
             parent_id: Parent message ID (for threading/replies)
             priority: 0=normal, 1=high, 2=urgent
+            bypass_chain: If True, skip chain-of-command check (SYSTEM ONLY)
 
         Returns:
             The new message ID (e.g. "msg-042")
+
+        Raises:
+            ValueError: If msg_type is invalid or chain-of-command is violated
         """
         if msg_type not in MSG_TYPES:
             raise ValueError(f"Unknown message type: {msg_type}. "
                              f"Must be one of {MSG_TYPES}")
+
+        # ── CHAIN-OF-COMMAND ENFORCEMENT ──
+        # An agent can only message its direct superior or direct subordinates.
+        # This is a LAW that cannot be broken (unless bypass_chain=True for system messages).
+        if not bypass_chain:
+            try:
+                from registry import enforce_communication, _find_chain
+                chain_check = enforce_communication(self.agent, to)
+                if not chain_check.ok:
+                    # Build the correct chain for the error message
+                    chain = _find_chain(self.agent, to)
+                    chain_str = " → ".join(chain) if chain else "(no path found)"
+                    error_msg = (
+                        f"CHAIN-OF-COMMAND VIOLATION — @{self.agent} cannot message @{to} directly.\n"
+                        f"  {self.agent} can only talk to direct superior or direct subordinates.\n"
+                        f"  Correct chain: {chain_str}\n"
+                        f"  (Use bypass_chain=True ONLY for system messages)"
+                    )
+                    write_log("Mailbox", self.agent, "chain_violation_blocked",
+                              {"from": self.agent, "to": to, "type": msg_type,
+                               "subject": subject[:80]})
+                    raise ValueError(error_msg)
+            except ImportError:
+                pass  # registry not available — skip chain check
+            except ValueError:
+                raise  # re-raise the chain violation
+            except Exception as e:
+                # Log but don't block — other registry errors shouldn't stop messaging
+                write_log("Mailbox", self.agent, "chain_check_error",
+                          {"error": str(e)})
 
         msg_id = state.next_id("msg", "msg-")
         now = utc_now()
@@ -375,9 +415,13 @@ class Mailbox:
 # ── Convenience functions (drop-in replacements for notify.py) ──
 
 def notify(agent_name: str, event: str, message: str, task_id: str = "",
-           from_agent: str = "System") -> McpResult:
+           from_agent: str = "System", bypass_chain: bool = False) -> McpResult:
     """
     Drop-in replacement for notify.notify(). Sends a message to an agent's mailbox.
+
+    CHAIN-OF-COMMAND: By default, messages must follow the hierarchy.
+    Set bypass_chain=True ONLY for system-level notifications (e.g., task.py
+    sending TASK_CREATED to Hermes — task.py is not an agent, it's the system).
 
     Old code that did:
         from notify import notify
@@ -399,8 +443,14 @@ def notify(agent_name: str, event: str, message: str, task_id: str = "",
             subject=event,
             body=message,
             task_id=task_id if task_id else None,
+            bypass_chain=bypass_chain,
         )
         return success({"notification_id": msg_id, "to": agent_name, "event": event})
+    except ValueError as e:
+        # Chain-of-command violation — return as a fail, not a crash
+        write_log("Mailbox", from_agent, "chain_violation",
+                  {"to": agent_name, "event": event, "error": str(e)[:200]})
+        return fail(str(e))
     except Exception as e:
         write_log("Mailbox", from_agent, "notify_failed",
                   {"to": agent_name, "event": event, "error": str(e)})

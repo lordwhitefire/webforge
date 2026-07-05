@@ -4,7 +4,7 @@ JrChromium — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrChromium. I am a Junior Backend Developer. I report to Titan.
+Role: I am JrChromium. I am a JrChromium. I report to Titan.
 Areas: 71-75
 """
 
@@ -22,7 +22,7 @@ sys.path.insert(0, str(MCP_DIR))
 sys.path.insert(0, str(WEBFORGE_HOME / "agents"))
 
 CONSTRAINTS = {
-    "role": "Junior Backend Developer",
+    "role": "JrChromium",
     "allowed": ["write_code", "fix_bug", "clone_repo", "answer_question"],
     "forbidden": ["delegate", "route", "approve", "reject"],
 }
@@ -83,6 +83,14 @@ def log_to_memory(message: str, kind: str = "note"):
 
 def notify_agent(agent_name: str, event: str, message: str, task_id: str = "",
                  priority: int = 0):
+    """
+    Send a mailbox message from this worker to another agent.
+
+    CHAIN-OF-COMMAND: A jr-* worker can only message:
+      - Their direct superior (Sr-*) — legal
+      - Developer (CEO) — ILLEGAL, must use bypass_chain=True (system notification)
+      - Hephaestus — ILLEGAL, must go through Sr → Lead → Aurora → Hephaestus
+    """
     try:
         from mailbox import Mailbox
         mb = Mailbox("jr-chromium")
@@ -91,12 +99,20 @@ def notify_agent(agent_name: str, event: str, message: str, task_id: str = "",
                             "TASK_DONE", "TASK_BLOCKED", "REVIEW_NEEDED", "REVIEW_RESULT",
                             "QUESTION", "ANSWER", "ESCALATION", "INFO"):
             msg_type = "INFO"
+
+        # Developer notifications are system-level (Developer = CEO, not in worker's chain)
+        # Use bypass_chain=True for these
+        bypass = agent_name.lower() in ("developer", "ceo")
+
         mb.send(
             to=agent_name, msg_type=msg_type,
             subject=event, body=message,
             task_id=task_id if task_id else None,
             priority=priority,
+            bypass_chain=bypass,
         )
+    except ValueError as e:
+        _log(f"CHAIN VIOLATION in notify_agent: {str(e)[:150]}")
     except Exception as e:
         _log(f"notify failed: {e}")
 
@@ -139,11 +155,19 @@ def ack_task(task: dict):
     except Exception as e:
         _log(f"ack failed: {e}")
 
-    notify_agent("Hephaestus", "TASK_ACK",
-                 "ACK — picked up " + task_id + ": Junior Backend Developer.", task_id)
+    # ACK goes to direct superior (reports_to) — NOT Hephaestus
+    # The jr-* worker's reports_to is set by the registry
+    try:
+        from registry import get_agent
+        my_def = get_agent("jr-chromium")
+        superior = my_def.reports_to if my_def and my_def.reports_to else "Hephaestus"
+    except ImportError:
+        superior = "Hephaestus"
+    notify_agent(superior, "TASK_ACK",
+                 "ACK — picked up " + task_id + ": JrChromium.", task_id)
     notify_agent("Developer", "TASK_ACK",
-                 "@JrChromium ACK'd " + task_id + ": Junior Backend Developer.", task_id)
-    log_to_memory("JrChromium ACK — picked up " + task_id + ": Junior Backend Developer", kind="decision")
+                 "@JrChromium ACK'd " + task_id + ": JrChromium.", task_id)
+    log_to_memory("JrChromium ACK — picked up " + task_id + ": JrChromium", kind="decision")
     _log(f"ACK sent for {task_id}")
 
 
@@ -193,7 +217,7 @@ def do_default_work(task: dict) -> str:
     work_dir.mkdir(parents=True, exist_ok=True)
 
     stub_path = work_dir / f"{task_id}-{task_type}.md"
-    title_str = "Junior Backend Developer"
+    title_str = "JrChromium"
     owner_str = "JrChromium"
     areas_str = "71-75"
     stub_content = f"""# {task_id}: {title}
@@ -296,7 +320,14 @@ def run(message: str = "work", context: dict = None) -> dict:
     _log(f"Task {task_id} marked DONE")
     checkpoint("done", {"result": result_message})
 
-    notify_agent("Hephaestus", "TASK_DONE",
+    # DONE goes to direct superior (reports_to) — NOT Hephaestus
+    try:
+        from registry import get_agent
+        my_def = get_agent("jr-chromium")
+        superior = my_def.reports_to if my_def and my_def.reports_to else "Hephaestus"
+    except ImportError:
+        superior = "Hephaestus"
+    notify_agent(superior, "TASK_DONE",
                  f"DONE — {task_id}: {task_title}. {result_message}", task_id)
     notify_agent("Developer", "TASK_DONE",
                  f"@JrChromium completed {task_id}: {task_title}. Result: {result_message}",

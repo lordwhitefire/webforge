@@ -126,7 +126,7 @@ def task_create(title: str, task_type: str = "feature", area: str = "",
             subject=f"New task: {title}",
             body=f"New task {task_id}: {title} (type: {task_type}, effort: {effort}). "
                  f"Suggested route: Hephaestus (build).",
-            task_id=task_id,
+            task_id=task_id, bypass_chain=True,
         )
     except Exception as e:
         write_log("Task", "Hephaestus", "notify_failed",
@@ -311,7 +311,7 @@ def task_pick(task_id: str, agent: str, bypass_gate: bool = False) -> McpResult:
             to=agent, msg_type="TASK_ASSIGNED",
             subject=f"Task {task_id}: {task['title']}",
             body=f"You have been assigned task {task_id}: {task['title']}. Start working on it.",
-            task_id=task_id,
+            task_id=task_id, bypass_chain=True,
         )
     except Exception as e:
         write_log("Task", agent, "notify_failed",
@@ -388,14 +388,14 @@ def task_done(task_id: str, summary: str = "") -> McpResult:
             subject=f"Task {task_id} completed",
             body=f"Task {task_id} completed by @{done_by}: {task['title']}. "
                  f"Quality checks may be needed: /check {task_id}",
-            task_id=task_id,
+            task_id=task_id, bypass_chain=True,
         )
         Mailbox("Hermes").send(
             to="Minos", msg_type="REVIEW_NEEDED",
             subject=f"Review needed: {task_id}",
             body=f"Task {task_id} marked done by @{done_by}: {task['title']}. "
                  f"Run quality check: /check {task_id}",
-            task_id=task_id,
+            task_id=task_id, bypass_chain=True,
         )
     except Exception as e:
         write_log("Task", done_by, "notify_failed",
@@ -426,7 +426,7 @@ def task_block(task_id: str, reason: str) -> McpResult:
             to="Developer", msg_type="TASK_BLOCKED",
             subject=f"Task blocked: {task_id}",
             body=f"Task {task_id} blocked: {reason}",
-            task_id=task_id, priority=1,
+            task_id=task_id, priority=1, bypass_chain=True,
         )
     except Exception as e:
         write_log("Task", "Hephaestus", "notify_failed",

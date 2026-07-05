@@ -91,6 +91,15 @@ def log_to_memory(message: str, kind: str = "note"):
 
 def notify_agent(agent_name: str, event: str, message: str, task_id: str = "",
                  priority: int = 0):
+    """
+    Send a mailbox message from Hephaestus to another agent.
+
+    CHAIN-OF-COMMAND: Hephaestus can only message:
+      - Hermes (direct superior) — legal
+      - Aurora, Titan, Zephyr (direct subordinates) — legal
+      - Developer (CEO) — ILLEGAL, must use bypass_chain=True (system notification)
+      - jr-* workers — ILLEGAL, must go through the chain
+    """
     try:
         from mailbox import Mailbox
         mb = Mailbox("Hephaestus")
@@ -99,12 +108,20 @@ def notify_agent(agent_name: str, event: str, message: str, task_id: str = "",
                             "TASK_DONE", "TASK_BLOCKED", "REVIEW_NEEDED", "REVIEW_RESULT",
                             "QUESTION", "ANSWER", "ESCALATION", "INFO"):
             msg_type = "INFO"
+
+        # Developer notifications are system-level (Developer = CEO, not in Hephaestus's chain)
+        # Use bypass_chain=True for these
+        bypass = agent_name.lower() in ("developer", "ceo")
+
         mb.send(
             to=agent_name, msg_type=msg_type,
             subject=event, body=message,
             task_id=task_id if task_id else None,
             priority=priority,
+            bypass_chain=bypass,
         )
+    except ValueError as e:
+        _log(f"CHAIN VIOLATION in notify_agent: {str(e)[:150]}")
     except Exception as e:
         _log(f"notify failed: {e}")
 
@@ -166,72 +183,91 @@ def ack_task(task: dict):
 
 def delegate_to_worker(task: dict) -> dict:
     """
-    Delegate a task to the right worker using the registry.
+    Delegate a task through the chain of command.
 
-    Uses registry.pick_worker_for_task() to find a worker whose:
-      - department matches the task type (build/quality/docs/intelligence)
-      - can_do includes the needed action (write_code/fix_bug/etc.)
+    HIERARCHY: Hephaestus → Aurora/Titan/Zephyr → Lead-* → Sr-* → Jr-*
 
-    Then:
-      1. Re-assign the task to the worker (task_pick)
-      2. Send TASK_ASSIGNED mailbox message to the worker
-      3. Trigger the worker's script in background
-      4. Return the delegation result
+    Hephaestus CANNOT message jr-* directly. He must:
+      1. Determine which sub-department (Frontend/Backend/DB) the task belongs to
+      2. Send TASK_DELEGATED to the appropriate lead (Aurora/Titan/Zephyr) via mailbox
+      3. Use task_pick (system operation) to reassign the task to the final worker
+      4. Trigger the worker's script (system operation)
+
+    The mailbox message goes through the chain legally.
+    The task ownership transfer and script trigger are system operations
+    (not agent-to-agent messages) so they bypass the chain check.
     """
     task_id = task["id"]
     title = task.get("title", "unknown")
     task_type = task.get("type", "feature")
 
-    # Use the registry to pick the right worker
     try:
         from registry import pick_worker_for_task, get_agent
         worker = pick_worker_for_task(task)
         if worker is None:
             _log(f"No worker available for task type {task_type}")
-            notify_agent("Developer", "TASK_BLOCKED",
-                         f"@Hephaestus could not find a worker for {task_id} "
-                         f"(type: {task_type}). No capable subordinate.",
-                         task_id, priority=2)
-            return {
-                "ok": False,
-                "error": f"No worker available for task type {task_type}",
-            }
+            # Notify Developer (system notification, bypass chain)
+            try:
+                from mailbox import Mailbox
+                Mailbox("Hephaestus").send(
+                    to="Developer", msg_type="TASK_BLOCKED",
+                    subject=f"No worker for {task_id}",
+                    body=f"@Hephaestus could not find a worker for {task_id} (type: {task_type}).",
+                    task_id=task_id, priority=2, bypass_chain=True,
+                )
+            except Exception:
+                pass
+            return {"ok": False, "error": f"No worker available for task type {task_type}"}
 
         worker_name = worker.name
         worker_title = worker.title
         worker_areas = worker.areas
-        _log(f"Delegating {task_id} to @{worker_name} ({worker_title})")
 
-        # 1. Re-assign the task to the worker
+        # Determine which lead to notify based on worker's sub-department
+        title_lower = worker_title.lower()
+        if "frontend" in title_lower:
+            lead_name = "Aurora"
+        elif "backend" in title_lower:
+            lead_name = "Titan"
+        elif "database" in title_lower or "infra" in title_lower:
+            lead_name = "Zephyr"
+        else:
+            lead_name = "Aurora"  # default
+
+        _log(f"Delegating {task_id}: Hephaestus → {lead_name} → ... → {worker_name}")
+
+        # 1. Send TASK_DELEGATED to the direct subordinate lead (LEGAL chain)
+        try:
+            from mailbox import Mailbox
+            mb = Mailbox("Hephaestus")
+            mb.send(
+                to=lead_name,
+                msg_type="TASK_ASSIGNED",
+                subject=f"Delegated: {title[:60]}",
+                body=(
+                    f"@Hephaestus delegated task {task_id} to your sub-department.\n"
+                    f"Title: {title}\n"
+                    f"Type: {task_type}\n"
+                    f"Target worker: @{worker_name} ({worker_title})\n"
+                    f"Worker areas: {worker_areas}\n\n"
+                    f"Please delegate this down the chain to @{worker_name}."
+                ),
+                task_id=task_id,
+                priority=1,
+            )
+        except ValueError as e:
+            _log(f"CHAIN VIOLATION: {e}")
+        except Exception as e:
+            _log(f"mailbox send to lead failed: {e}")
+
+        # 2. Re-assign the task to the final worker (SYSTEM operation, bypass chain)
         try:
             from task import task_pick
             task_pick(task_id, worker_name, bypass_gate=True)
         except Exception as e:
             _log(f"task_pick failed: {e}")
 
-        # 2. Send TASK_ASSIGNED mailbox message to the worker
-        try:
-            from mailbox import Mailbox
-            mb = Mailbox("Hephaestus")
-            mb.send(
-                to=worker_name,
-                msg_type="TASK_ASSIGNED",
-                subject=f"Delegated: {title[:60]}",
-                body=(
-                    f"@Hephaestus delegated task {task_id} to you.\n"
-                    f"Title: {title}\n"
-                    f"Type: {task_type}\n"
-                    f"Your role: {worker_title}\n"
-                    f"Your areas: {worker_areas}\n\n"
-                    f"Please do the work and mark the task done when complete."
-                ),
-                task_id=task_id,
-                priority=1,
-            )
-        except Exception as e:
-            _log(f"mailbox send to worker failed: {e}")
-
-        # 3. Trigger the worker's script in background
+        # 3. Trigger the worker's script (SYSTEM operation, bypass chain)
         triggered = False
         try:
             worker_script = WEBFORGE_HOME / "agents" / f"{worker_name.lower()}.py"
