@@ -560,10 +560,43 @@ def _build_hierarchy():
                         break
 
 
+def _link_skill_files():
+    """
+    Link each agent to its skill .md file in ~/webforge/skills/<dept>/<name>.md.
+
+    Skill files use the agent name (lowercase). Some older files use
+    underscores (sr_brook.md) instead of hyphens (sr-brook.md) — we
+    normalize for matching.
+    """
+    skills_dir = Path.home() / "webforge" / "skills"
+    if not skills_dir.exists():
+        return
+
+    # Build a map of skill file paths, indexed by normalized name
+    all_skills = {}
+    for dept_dir in skills_dir.iterdir():
+        if not dept_dir.is_dir():
+            continue
+        for skill_file in dept_dir.glob("*.md"):
+            name = skill_file.stem.lower()
+            rel_path = str(skill_file.relative_to(skills_dir))
+            all_skills[name] = rel_path
+            # Also index under hyphen-normalized name
+            normalized = name.replace("_", "-")
+            all_skills[normalized] = rel_path
+
+    # Link each agent to its skill file
+    for agent in AGENTS.values():
+        name_lower = agent.name.lower()
+        if name_lower in all_skills:
+            agent.skill_file = all_skills[name_lower]
+
+
 # Discover, assign juniors, and build hierarchy
 _discover_all_agents()
 _assign_jr_to_seniors()
 _build_hierarchy()
+_link_skill_files()
 
 
 # ── Public API ──
