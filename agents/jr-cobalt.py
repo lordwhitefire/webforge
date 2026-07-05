@@ -4,7 +4,7 @@ JrCobalt — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrCobalt. I am a JrCobalt. I report to Titan.
+Role: I am Jr-Cobalt. I am a Junior Backend Developer. I report to Sr-Stone.
 Areas: 81-82
 """
 

@@ -4,7 +4,7 @@ JrWren — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrWren. I am a JrWren. I report to Sr-Brook.
+Role: I am Jr-Wren. I am a Junior Frontend Developer. I report to Sr-Hale.
 Areas: varies
 """
 

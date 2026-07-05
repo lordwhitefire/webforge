@@ -4,7 +4,7 @@ JrFinch — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrFinch. I am a JrFinch. I report to Aurora.
+Role: I am Jr-Finch. I am a Junior Frontend Developer. I report to Sr-Brook.
 Areas: 06-10
 """
 

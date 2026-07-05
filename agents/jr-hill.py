@@ -4,7 +4,7 @@ JrHill — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrHill. I am a JrHill. I report to Titan.
+Role: I am Jr-Hill. I am a Junior Backend Developer. I report to Sr-Stone.
 Areas: 61-65
 """
 

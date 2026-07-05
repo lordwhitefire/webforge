@@ -4,7 +4,7 @@ JrBronze — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrBronze. I am a JrBronze. I report to Titan.
+Role: I am Jr-Bronze. I am a Junior Backend Developer. I report to Sr-Iron.
 Areas: 26-30
 """
 

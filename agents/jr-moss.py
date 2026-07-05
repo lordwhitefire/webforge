@@ -4,7 +4,7 @@ JrMoss — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrMoss. I am a JrMoss. I report to Aurora.
+Role: I am Jr-Moss. I am a Junior Frontend Developer. I report to Sr-Brook.
 Areas: 61-65
 """
 

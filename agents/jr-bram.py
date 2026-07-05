@@ -4,7 +4,7 @@ JrBram — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrBram. I am a JrBram. I report to Aurora.
+Role: I am Jr-Bram. I am a Junior Frontend Developer. I report to Sr-Vance.
 Areas: 71-75
 """
 

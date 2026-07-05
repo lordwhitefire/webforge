@@ -4,7 +4,7 @@ JrMountain — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrMountain. I am a JrMountain. I report to Titan.
+Role: I am Jr-Mountain. I am a Junior Backend Developer. I report to Sr-Earth.
 Areas: 41-45
 """
 

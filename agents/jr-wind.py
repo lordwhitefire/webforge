@@ -4,7 +4,7 @@ JrWind — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrWind. I am a JrWind. I report to Sr-Brook.
+Role: I am Jr-Wind. I am a Junior Frontend Developer. I report to Sr-Brook.
 Areas: varies
 """
 

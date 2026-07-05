@@ -4,7 +4,7 @@ JrQuartz — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrQuartz. I am a JrQuartz. I report to Sr-Brook.
+Role: I am Jr-Quartz. I am a Junior Frontend Developer. I report to Sr-Brook.
 Areas: varies
 """
 

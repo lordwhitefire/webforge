@@ -302,16 +302,23 @@ def _parse_role_line(filepath: Path) -> tuple:
         if reports_to.lower().startswith("my "):
             reports_to = None
 
-    # Extract title — text between "I am a/an " and ". I report"
+    # Extract title — from "I am a/an/the {Title}. I report/lead"
+    # The role line format is: "I am {Name}. I am a/an/the {Title}. I report to {Superior}."
+    # We want the SECOND "I am" clause (the one with a/an/the), not the first (the name).
     title = "Agent"
     title_match = re.search(
-        r'I am (?:the )?(?:a |an )?(.+?)\.(?:\s+I (?:report|lead))',
+        r'I am (?:a |an |the )(.+?)\.(?:\s+I (?:report|lead))',
         role_text
     )
     if title_match:
         title = title_match.group(1).strip()
         # Clean up: "Build Director" not "Build Director. I lead 69 agents"
         title = title.split('.')[0].strip()
+    else:
+        # Fallback: try matching "I am the {Title}" without the "I report" part
+        title_match = re.search(r'I am (?:the )(.+?)\.', role_text)
+        if title_match:
+            title = title_match.group(1).strip()
 
     # Extract areas
     areas = ""

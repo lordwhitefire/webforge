@@ -4,7 +4,7 @@ JrVanadium — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrVanadium. I am a JrVanadium. I report to Sr-Brook.
+Role: I am Jr-Vanadium. I am a Junior Frontend Developer. I report to Sr-Vance.
 Areas: varies
 """
 

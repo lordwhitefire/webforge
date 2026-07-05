@@ -4,7 +4,7 @@ JrLake2 — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrLake2. I am a JrLake2. I report to Aurora.
+Role: I am Jr-Lake2. I am a Junior Frontend Developer. I report to Sr-Vance.
 Areas: 76-80
 """
 

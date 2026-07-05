@@ -4,7 +4,7 @@ JrReed — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrReed. I am a JrReed. I report to Sr-Brook.
+Role: I am Jr-Reed. I am a Junior Frontend Developer. I report to Sr-Hale.
 Areas: varies
 """
 

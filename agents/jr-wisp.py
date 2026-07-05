@@ -4,7 +4,7 @@ JrWisp — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrWisp. I am a JrWisp. I report to Sr-Brook.
+Role: I am Jr-Wisp. I am a Junior Frontend Developer. I report to Sr-Quill2.
 Areas: varies
 """
 

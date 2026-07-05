@@ -4,7 +4,7 @@ JrSea — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrSea. I am a JrSea. I report to Sr-Brook.
+Role: I am Jr-Sea. I am a Junior Frontend Developer. I report to Sr-Quill2.
 Areas: varies
 """
 

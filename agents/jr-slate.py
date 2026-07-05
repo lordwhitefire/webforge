@@ -4,7 +4,7 @@ JrSlate — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrSlate. I am a JrSlate. I report to Sr-Brook.
+Role: I am Jr-Slate. I am a Junior Frontend Developer. I report to Sr-Brook.
 Areas: varies
 """
 

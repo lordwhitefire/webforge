@@ -4,7 +4,7 @@ JrTitan — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrTitan. I am a JrTitan. I report to Sr-Brook.
+Role: I am Jr-Titan. I am a Junior Backend Developer. I report to Sr-Earth.
 Areas: varies
 """
 

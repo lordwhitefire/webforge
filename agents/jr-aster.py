@@ -4,7 +4,7 @@ JrAster — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrAster. I am a JrAster. I report to Aurora.
+Role: I am Jr-Aster. I am a Junior Frontend Developer. I report to Sr-Hale.
 Areas: 81-82
 """
 

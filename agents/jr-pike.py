@@ -4,7 +4,7 @@ JrPike — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrPike. I am a JrPike. I report to Titan.
+Role: I am Jr-Pike. I am a Junior Backend Developer. I report to Sr-Stone.
 Areas: 21-25
 """
 

@@ -4,7 +4,7 @@ JrCliff — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrCliff. I am a JrCliff. I report to Aurora.
+Role: I am Jr-Cliff. I am a Junior Frontend Developer. I report to Sr-Brook.
 Areas: 46-50
 """
 

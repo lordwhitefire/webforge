@@ -3,7 +3,7 @@
 OdinMoss — Intelligence Department
 STANDALONE script. Checks board for assigned tasks and works on them.
 
-Role: I am Odin-Moss. I am an Odin Agent in the Intelligence team. I report to Athena.
+Role: I am Odin-Moss. I am an Odin Agent in the Intelligence team. I report to Odin-Lead.
 Areas: 21-25
 """
 

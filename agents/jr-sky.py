@@ -4,7 +4,7 @@ JrSky — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrSky. I am a JrSky. I report to Sr-Brook.
+Role: I am Jr-Sky. I am a Junior Frontend Developer. I report to Sr-Vance.
 Areas: varies
 """
 

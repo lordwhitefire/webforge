@@ -4,7 +4,7 @@ JrFern — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrFern. I am a JrFern. I report to Aurora.
+Role: I am Jr-Fern. I am a Junior Frontend Developer. I report to Sr-Vance.
 Areas: 51-55
 """
 

@@ -4,7 +4,7 @@ JrChromium — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrChromium. I am a JrChromium. I report to Titan.
+Role: I am Jr-Chromium. I am a Junior Backend Developer. I report to Sr-Cloud.
 Areas: 71-75
 """
 

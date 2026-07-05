@@ -4,7 +4,7 @@ JrBirch — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrBirch. I am a JrBirch. I report to Titan.
+Role: I am Jr-Birch. I am a Junior Backend Developer. I report to Sr-Stone.
 Areas: 56-60
 """
 

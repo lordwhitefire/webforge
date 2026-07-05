@@ -4,7 +4,7 @@ JrAsh — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrAsh. I am a JrAsh. I report to Zephyr.
+Role: I am Jr-Ash. I am a Junior Database/Infra Developer. I report to Sr-Water.
 Areas: 51-55
 """
 

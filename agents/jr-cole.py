@@ -4,7 +4,7 @@ JrCole — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrCole. I am a JrCole. I report to Aurora.
+Role: I am Jr-Cole. I am a Junior Frontend Developer. I report to Sr-Quill2.
 Areas: 16-20
 """
 

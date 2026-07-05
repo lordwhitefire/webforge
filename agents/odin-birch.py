@@ -3,7 +3,7 @@
 OdinBirch — Intelligence Department
 STANDALONE script. Checks board for assigned tasks and works on them.
 
-Role: I am Odin-Birch. I am an Odin Agent in the Intelligence team. I report to Athena.
+Role: I am Odin-Birch. I am an Odin Agent in the Intelligence team. I report to Odin-Lead.
 Areas: 11-15
 """
 

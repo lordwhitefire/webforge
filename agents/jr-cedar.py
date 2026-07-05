@@ -4,7 +4,7 @@ JrCedar — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrCedar. I am a JrCedar. I report to Titan.
+Role: I am Jr-Cedar. I am a Junior Backend Developer. I report to Sr-Earth.
 Areas: 51-55
 """
 

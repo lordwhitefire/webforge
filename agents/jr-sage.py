@@ -4,7 +4,7 @@ JrSage — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrSage. I am a JrSage. I report to Sr-Brook.
+Role: I am Jr-Sage. I am a Junior Frontend Developer. I report to Sr-Brook.
 Areas: varies
 """
 

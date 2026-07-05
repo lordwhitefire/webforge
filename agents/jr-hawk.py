@@ -4,7 +4,7 @@ JrHawk — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrHawk. I am a JrHawk. I report to Aurora.
+Role: I am Jr-Hawk. I am a Junior Frontend Developer. I report to Sr-Quill2.
 Areas: 01-05
 """
 

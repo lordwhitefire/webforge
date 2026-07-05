@@ -4,7 +4,7 @@ JrValley — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrValley. I am a JrValley. I report to Sr-Brook.
+Role: I am Jr-Valley. I am a Junior Frontend Developer. I report to Sr-Hale.
 Areas: varies
 """
 

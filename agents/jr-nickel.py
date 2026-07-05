@@ -4,7 +4,7 @@ JrNickel — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrNickel. I am a JrNickel. I report to Zephyr.
+Role: I am Jr-Nickel. I am a Junior Database/Infra Developer. I report to Sr-Water.
 Areas: 21-25
 """
 

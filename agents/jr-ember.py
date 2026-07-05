@@ -4,7 +4,7 @@ JrEmber — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrEmber. I am a JrEmber. I report to Zephyr.
+Role: I am Jr-Ember. I am a Junior Database/Infra Developer. I report to Sr-Fire.
 Areas: 46-50
 """
 

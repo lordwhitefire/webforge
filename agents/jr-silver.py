@@ -4,7 +4,7 @@ JrSilver — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrSilver. I am a JrSilver. I report to Sr-Brook.
+Role: I am Jr-Silver. I am a Junior Frontend Developer. I report to Sr-Hale.
 Areas: varies
 """
 

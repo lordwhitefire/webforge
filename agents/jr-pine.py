@@ -4,7 +4,7 @@ JrPine — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrPine. I am a JrPine. I report to Aurora.
+Role: I am Jr-Pine. I am a Junior Frontend Developer. I report to Sr-Hale.
 Areas: 21-25
 """
 

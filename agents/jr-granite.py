@@ -4,7 +4,7 @@ JrGranite — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrGranite. I am a JrGranite. I report to Titan.
+Role: I am Jr-Granite. I am a Junior Backend Developer. I report to Sr-Cloud.
 Areas: 01-05
 """
 

@@ -4,7 +4,7 @@ JrStorm — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrStorm. I am a JrStorm. I report to Sr-Brook.
+Role: I am Jr-Storm. I am a Junior Frontend Developer. I report to Sr-Quill2.
 Areas: varies
 """
 

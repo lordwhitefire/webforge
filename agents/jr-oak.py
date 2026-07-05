@@ -4,7 +4,7 @@ JrOak — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrOak. I am a JrOak. I report to Titan.
+Role: I am Jr-Oak. I am a Junior Backend Developer. I report to Sr-Cloud.
 Areas: 11-15
 """
 

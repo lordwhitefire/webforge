@@ -4,7 +4,7 @@ JrPlain — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrPlain. I am a JrPlain. I report to Sr-Brook.
+Role: I am Jr-Plain. I am a Junior Frontend Developer. I report to Sr-Vance.
 Areas: varies
 """
 

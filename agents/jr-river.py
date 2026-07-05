@@ -4,7 +4,7 @@ JrRiver — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrRiver. I am a JrRiver. I report to Sr-Brook.
+Role: I am Jr-River. I am a Junior Frontend Developer. I report to Sr-Vance.
 Areas: varies
 """
 

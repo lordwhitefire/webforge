@@ -4,7 +4,7 @@ JrOcean — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrOcean. I am a JrOcean. I report to Aurora.
+Role: I am Jr-Ocean. I am a Junior Frontend Developer. I report to Sr-Quill2.
 Areas: 26-30
 """
 

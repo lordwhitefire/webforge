@@ -4,7 +4,7 @@ JrCoal — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrCoal. I am a JrCoal. I report to Zephyr.
+Role: I am Jr-Coal. I am a Junior Database/Infra Developer. I report to Sr-Wood.
 Areas: 56-60
 """
 

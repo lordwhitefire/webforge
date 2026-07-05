@@ -4,7 +4,7 @@ JrCopper — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrCopper. I am a JrCopper. I report to Titan.
+Role: I am Jr-Copper. I am a Junior Backend Developer. I report to Sr-Iron.
 Areas: 21-25
 """
 

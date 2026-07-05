@@ -4,7 +4,7 @@ JrGold — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrGold. I am a JrGold. I report to Titan.
+Role: I am Jr-Gold. I am a Junior Backend Developer. I report to Sr-Earth.
 Areas: 36-40
 """
 

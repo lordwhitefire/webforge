@@ -3,7 +3,7 @@
 ProbeLyric — Intelligence Department
 STANDALONE script. Checks board for assigned tasks and works on them.
 
-Role: I am Probe-Lyric. I am a Probe Agent in the Intelligence team. I report to Athena.
+Role: I am Probe-Lyric. I am a Probe Agent in the Intelligence team. I report to Probe-Lead.
 Areas: 81-82
 """
 

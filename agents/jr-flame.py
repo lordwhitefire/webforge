@@ -4,7 +4,7 @@ JrFlame — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrFlame. I am a JrFlame. I report to Zephyr.
+Role: I am Jr-Flame. I am a Junior Database/Infra Developer. I report to Sr-Steel.
 Areas: 41-45
 """
 
