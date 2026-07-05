@@ -96,7 +96,7 @@ class Agent:
         This is THE method that controls everything:
         1. Parse the message
         2. Determine what action is needed
-        3. Check if this agent is ALLOWED to do it
+        3. Check if this agent is ALLOWED to do it (code-enforced via registry)
         4. Execute the action IN CODE
         5. If AI reasoning is needed, call ask_ai() (makes direct API call)
         6. Return the result
@@ -108,11 +108,10 @@ class Agent:
         context["agent_name"] = self.name
 
         # ── NORMAL FLOW ──
-        # (No resume check needed — ask_ai() now makes direct API calls synchronously)
         # 1. Parse the message
         parsed = self.parse_message(message, context)
 
-        # 2. Check if the action is allowed
+        # 2. Check if the action is allowed (legacy allowed_actions list)
         if not self.is_allowed(parsed["action"]):
             return self._refuse(
                 f"I am {self.name}. I cannot do '{parsed['action']}'. "
@@ -125,6 +124,28 @@ class Agent:
                 f"I am {self.name}. I am NOT allowed to '{parsed['action']}'. "
                 f"{self._suggest_who(parsed['action'])}"
             )
+
+        # 3b. CODE-ENFORCED ROLE CHECK via registry
+        # Directors attempting worker actions must DELEGATE instead.
+        # Workers attempting director actions are REFUSED.
+        try:
+            from registry import enforce_role, must_delegate, get_subordinates, canonical_action
+            action = canonical_action(parsed["action"])
+            role_check = enforce_role(self.name, action)
+            if not role_check.ok:
+                # Check if this is a "must delegate" situation
+                if must_delegate(self.name, action):
+                    # Auto-delegate to a subordinate
+                    delegated = self._delegate_action(action, parsed.get("data", {}))
+                    if delegated:
+                        return delegated
+                    # Delegation failed — return the delegate-required message
+                    return self._refuse(role_check.error)
+                return self._refuse(role_check.error)
+        except ImportError:
+            pass  # registry not available — skip role check
+        except Exception:
+            pass  # don't let registry failure break the agent
 
         # 4. Execute the action (this is in code, not AI)
         result = self.execute(parsed["action"], parsed["data"], context)
@@ -142,6 +163,113 @@ class Agent:
                 )
 
         return result
+
+    def _delegate_action(self, action: str, data: dict) -> dict | None:
+        """
+        Auto-delegate an action to a subordinate.
+
+        Uses the registry to find a capable subordinate, then:
+          1. Re-assigns the task to the subordinate (task_pick)
+          2. Sends a TASK_ASSIGNED mailbox message
+          3. Triggers the subordinate's script in background
+          4. Returns a "delegated" response
+
+        Returns None if no capable subordinate found.
+        """
+        try:
+            from registry import get_agent, get_subordinates
+            import os
+            import subprocess
+            from pathlib import Path
+
+            subs = get_subordinates(self.name)
+            capable = [s for s in subs if s.can_perform(action)]
+            if not capable:
+                return None
+
+            worker = capable[0]
+            task_id = data.get("task_id", "") or os.environ.get("WEBFORGE_TASK_ID", "")
+
+            # Re-assign the task to the worker
+            if task_id:
+                try:
+                    from task import task_pick
+                    task_pick(task_id, worker.name, bypass_gate=True)
+                except Exception:
+                    pass
+
+            # Send mailbox message
+            try:
+                from mailbox import Mailbox
+                mb = Mailbox(self.name)
+                message = data.get("message", data.get("title", ""))
+                mb.send(
+                    to=worker.name,
+                    msg_type="TASK_ASSIGNED",
+                    subject=f"Delegated by @{self.name}: {message[:60] if message else action}",
+                    body=f"@{self.name} delegated this task to you ({worker.title}). "
+                         f"Action: {action}. "
+                         + (f"Task: {task_id}" if task_id else ""),
+                    task_id=task_id if task_id else None,
+                    priority=1,
+                )
+            except Exception:
+                pass
+
+            # Trigger the worker's script in background
+            try:
+                worker_script = Path.home() / "webforge" / "agents" / f"{worker.name.lower()}.py"
+                if worker_script.exists():
+                    env = os.environ.copy()
+                    env["WEBFORGE_PROJECT"] = str(self.project_root)
+                    env["WEBFORGE_TASK_ID"] = task_id
+                    env["WEBFORGE_AGENT_TRIGGER"] = self.name
+
+                    log_dir = self.project_root / ".webforge" / "logs"
+                    log_dir.mkdir(parents=True, exist_ok=True)
+                    log_fp = open(log_dir / f"{worker.name.lower()}.log", "w")
+
+                    subprocess.Popen(
+                        ["python3", str(worker_script), "work"],
+                        stdout=log_fp,
+                        stderr=subprocess.STDOUT,
+                        env=env,
+                        start_new_session=True,
+                    )
+            except Exception:
+                pass
+
+            return {
+                "agent": self.name,
+                "action": "delegate",
+                "delegated_to": worker.name,
+                "worker_title": worker.title,
+                "task_id": task_id,
+                "message": (
+                    f"📤 I am {self.name} ({self._get_my_title()}). "
+                    f"I don't do '{action}' myself — that's worker work.\n"
+                    f"   Delegated to @{worker.name} ({worker.title}).\n"
+                    f"   Their script has been triggered. They will:\n"
+                    f"     1. Check their mailbox\n"
+                    f"     2. ACK the task\n"
+                    f"     3. Do the work\n"
+                    f"     4. Mark done + notify"
+                ),
+                "next_step": f"Watch @{worker.name}",
+            }
+        except Exception as e:
+            return None
+
+    def _get_my_title(self) -> str:
+        """Get this agent's title from the registry."""
+        try:
+            from registry import get_agent
+            agent = get_agent(self.name)
+            if agent:
+                return agent.title
+        except Exception:
+            pass
+        return self.department
 
     def parse_message(self, message: str, context: dict) -> dict:
         """

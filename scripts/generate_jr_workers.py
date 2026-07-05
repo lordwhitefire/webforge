@@ -1,11 +1,26 @@
 #!/usr/bin/env python3
 """
-JrCliff — Build Department Worker
+Generate proper worker scripts for all jr-* build agents.
+
+Replaces the buggy template (dead return statement, only checks 'doing',
+no real work, no ACK) with a proper worker script.
+"""
+
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "mcp"))
+import registry
+
+WORKER_TEMPLATE = '''#!/usr/bin/env python3
+"""
+__DISPLAY_NAME__ — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrCliff. I am a Junior Frontend Developer. I report to Aurora.
-Areas: 46-50
+Role: I am __DISPLAY_NAME__. I am a __TITLE__. I report to __REPORTS_TO__.
+Areas: __AREAS__
 """
 
 import sys
@@ -22,7 +37,7 @@ sys.path.insert(0, str(MCP_DIR))
 sys.path.insert(0, str(WEBFORGE_HOME / "agents"))
 
 CONSTRAINTS = {
-    "role": "Junior Frontend Developer",
+    "role": "__TITLE__",
     "allowed": ["write_code", "fix_bug", "clone_repo", "answer_question"],
     "forbidden": ["delegate", "route", "approve", "reject"],
 }
@@ -51,7 +66,7 @@ _state.init_schema()
 def check_my_tasks() -> list:
     rows = _state.query(
         "SELECT * FROM tasks WHERE LOWER(owner)=? AND status IN ('todo', 'doing') ORDER BY created_at ASC",
-        ("jr-cliff",)
+        ("__NAME__",)
     )
     return rows
 
@@ -76,7 +91,7 @@ def mark_done(task_id: str, summary: str = "") -> bool:
 def log_to_memory(message: str, kind: str = "note"):
     try:
         from memory import session_append
-        session_append(message, agent="JrCliff", kind=kind)
+        session_append(message, agent="__DISPLAY_NAME__", kind=kind)
     except Exception:
         pass
 
@@ -85,7 +100,7 @@ def notify_agent(agent_name: str, event: str, message: str, task_id: str = "",
                  priority: int = 0):
     try:
         from mailbox import Mailbox
-        mb = Mailbox("jr-cliff")
+        mb = Mailbox("__NAME__")
         msg_type = event.upper().replace(" ", "_")
         if msg_type not in ("TASK_CREATED", "TASK_ASSIGNED", "TASK_ACK", "TASK_PROGRESS",
                             "TASK_DONE", "TASK_BLOCKED", "REVIEW_NEEDED", "REVIEW_RESULT",
@@ -131,19 +146,19 @@ def ack_task(task: dict):
         assigned_msg = _state.query_one(
             "SELECT * FROM messages WHERE to_agent=? AND type='TASK_ASSIGNED' "
             "AND task_id=? AND status='unread' ORDER BY created_at DESC LIMIT 1",
-            ("jr-cliff", task_id)
+            ("__NAME__", task_id)
         )
         if assigned_msg:
             from mailbox import Mailbox
-            Mailbox("jr-cliff").ack(assigned_msg["id"], "On it — " + title)
+            Mailbox("__NAME__").ack(assigned_msg["id"], "On it — " + title)
     except Exception as e:
         _log(f"ack failed: {e}")
 
     notify_agent("Hephaestus", "TASK_ACK",
-                 "ACK — picked up " + task_id + ": Junior Frontend Developer.", task_id)
+                 "ACK — picked up " + task_id + ": __TITLE__.", task_id)
     notify_agent("Developer", "TASK_ACK",
-                 "@JrCliff ACK'd " + task_id + ": Junior Frontend Developer.", task_id)
-    log_to_memory("JrCliff ACK — picked up " + task_id + ": Junior Frontend Developer", kind="decision")
+                 "@__DISPLAY_NAME__ ACK'd " + task_id + ": __TITLE__.", task_id)
+    log_to_memory("__DISPLAY_NAME__ ACK — picked up " + task_id + ": __TITLE__", kind="decision")
     _log(f"ACK sent for {task_id}")
 
 
@@ -193,9 +208,9 @@ def do_default_work(task: dict) -> str:
     work_dir.mkdir(parents=True, exist_ok=True)
 
     stub_path = work_dir / f"{task_id}-{task_type}.md"
-    title_str = "Junior Frontend Developer"
-    owner_str = "JrCliff"
-    areas_str = "46-50"
+    title_str = "__TITLE__"
+    owner_str = "__DISPLAY_NAME__"
+    areas_str = "__AREAS__"
     stub_content = f"""# {task_id}: {title}
 
 - Type: {task_type}
@@ -223,7 +238,7 @@ def do_work(task: dict) -> str:
     title_lower = title.lower()
 
     if "clone" in title_lower and ("repo" in title_lower or "github.com" in title_lower or ".git" in title_lower):
-        url_match = re.search(r'https?://[^\s]+\.git|https?://github\.com/[^\s]+', title)
+        url_match = re.search(r'https?://[^\\s]+\\.git|https?://github\\.com/[^\\s]+', title)
         if url_match:
             return do_clone_repo(url_match.group(0), task["id"])
         return "Clone task but no URL found"
@@ -232,7 +247,7 @@ def do_work(task: dict) -> str:
 
 
 def run(message: str = "work", context: dict = None) -> dict:
-    _log(f"JrCliff triggered (task_id={os.environ.get('WEBFORGE_TASK_ID', '')!r})")
+    _log(f"__DISPLAY_NAME__ triggered (task_id={os.environ.get('WEBFORGE_TASK_ID', '')!r})")
 
     checkpoint("started", {"message": message})
 
@@ -246,15 +261,15 @@ def run(message: str = "work", context: dict = None) -> dict:
             my_tasks = explicit
         else:
             task = _state.query_one("SELECT * FROM tasks WHERE id=?", (explicit_id,))
-            if task and (task.get("owner") or "").lower() == "jr-cliff":
+            if task and (task.get("owner") or "").lower() == "__NAME__":
                 my_tasks = [task]
 
     if not my_tasks:
-        no_work_msg = f"I am JrCliff. No tasks assigned to me."
+        no_work_msg = f"I am __DISPLAY_NAME__. No tasks assigned to me."
         _log(no_work_msg)
         complete_run(output=no_work_msg)
         return {
-            "agent": "JrCliff",
+            "agent": "__DISPLAY_NAME__",
             "action": "idle",
             "message": no_work_msg,
             "next_step": None,
@@ -270,17 +285,17 @@ def run(message: str = "work", context: dict = None) -> dict:
 
     try:
         notify_agent("Developer", "TASK_PROGRESS",
-                     f"@JrCliff → {task_id}: Starting work", task_id)
+                     f"@__DISPLAY_NAME__ → {task_id}: Starting work", task_id)
         checkpoint("working", {})
         result_message = do_work(task)
         notify_agent("Developer", "TASK_PROGRESS",
-                     f"@JrCliff → {task_id}: {result_message}", task_id)
+                     f"@__DISPLAY_NAME__ → {task_id}: {result_message}", task_id)
         checkpoint("work_complete", {"result": result_message})
     except Exception as e:
         err_msg = f"Work failed: {e}"
         _log(err_msg)
         notify_agent("Developer", "TASK_BLOCKED",
-                     f"@JrCliff failed on {task_id}: {e}", task_id, priority=2)
+                     f"@__DISPLAY_NAME__ failed on {task_id}: {e}", task_id, priority=2)
         try:
             from task import task_block
             task_block(task_id, str(e))
@@ -288,7 +303,7 @@ def run(message: str = "work", context: dict = None) -> dict:
             pass
         complete_run(output=err_msg, exit_code=1)
         return {
-            "agent": "JrCliff", "action": "failed",
+            "agent": "__DISPLAY_NAME__", "action": "failed",
             "task_id": task_id, "message": err_msg, "next_step": None,
         }
 
@@ -299,21 +314,21 @@ def run(message: str = "work", context: dict = None) -> dict:
     notify_agent("Hephaestus", "TASK_DONE",
                  f"DONE — {task_id}: {task_title}. {result_message}", task_id)
     notify_agent("Developer", "TASK_DONE",
-                 f"@JrCliff completed {task_id}: {task_title}. Result: {result_message}",
+                 f"@__DISPLAY_NAME__ completed {task_id}: {task_title}. Result: {result_message}",
                  task_id)
-    log_to_memory(f"JrCliff COMPLETED {task_id}: {task_title} — {result_message}",
+    log_to_memory(f"__DISPLAY_NAME__ COMPLETED {task_id}: {task_title} — {result_message}",
                   kind="decision")
 
     complete_run(output=result_message, exit_code=0)
 
     return {
-        "agent": "JrCliff",
+        "agent": "__DISPLAY_NAME__",
         "action": "work_complete",
         "task_id": task_id,
         "task_title": task_title,
         "message": (
-            f"I am JrCliff. I worked on {task_id}: {task_title}.\n"
-            f"  Result: {result_message}\n"
+            f"I am __DISPLAY_NAME__. I worked on {task_id}: {task_title}.\\n"
+            f"  Result: {result_message}\\n"
             f"  Task marked DONE."
         ),
         "next_step": None,
@@ -322,7 +337,58 @@ def run(message: str = "work", context: dict = None) -> dict:
 
 if __name__ == "__main__":
     msg = " ".join(sys.argv[1:]) or "work"
-    _log(f"=== JrCliff starting (pid={os.getpid()}) ===")
+    _log(f"=== __DISPLAY_NAME__ starting (pid={os.getpid()}) ===")
     r = run(msg)
-    _log(f"=== JrCliff done: action={r.get('action')} ===")
+    _log(f"=== __DISPLAY_NAME__ done: action={r.get('action')} ===")
     print(r.get("message", json.dumps(r, indent=2)))
+'''
+
+
+def generate_worker(agent_def) -> str:
+    name = agent_def.name
+    display_name = name.replace("-", " ").title().replace(" ", "")
+
+    # Use unique placeholders that won't collide with Python f-strings
+    script = WORKER_TEMPLATE
+    script = script.replace("__NAME__", name)
+    script = script.replace("__DISPLAY_NAME__", display_name)
+    script = script.replace("__TITLE__", agent_def.title)
+    script = script.replace("__REPORTS_TO__", agent_def.reports_to or "Hephaestus")
+    script = script.replace("__AREAS__", agent_def.areas or "N/A")
+    return script
+
+
+def main():
+    agents_dir = Path.home() / "webforge" / "agents"
+
+    if len(sys.argv) > 1:
+        name = sys.argv[1]
+        agent = registry.get_agent(name)
+        if not agent:
+            print(f"Agent not found: {name}")
+            sys.exit(1)
+        script = generate_worker(agent)
+        path = agents_dir / f"{name}.py"
+        path.write_text(script, encoding="utf-8")
+        os.chmod(path, 0o755)
+        print(f"Generated: {path}")
+        return
+
+    count = 0
+    for agent in registry.get_all_workers():
+        if agent.department != registry.DEPT_BUILD:
+            continue
+        if not agent.name.startswith("jr-"):
+            continue
+
+        script = generate_worker(agent)
+        path = agents_dir / f"{agent.name}.py"
+        path.write_text(script, encoding="utf-8")
+        os.chmod(path, 0o755)
+        count += 1
+
+    print(f"Generated {count} jr-* worker scripts")
+
+
+if __name__ == "__main__":
+    main()

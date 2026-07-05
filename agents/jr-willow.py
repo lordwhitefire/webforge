@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-JrCliff — Build Department Worker
+JrWillow — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am JrCliff. I am a Junior Frontend Developer. I report to Aurora.
-Areas: 46-50
+Role: I am JrWillow. I am a Junior Frontend Developer. I report to Aurora.
+Areas: 31-35
 """
 
 import sys
@@ -51,7 +51,7 @@ _state.init_schema()
 def check_my_tasks() -> list:
     rows = _state.query(
         "SELECT * FROM tasks WHERE LOWER(owner)=? AND status IN ('todo', 'doing') ORDER BY created_at ASC",
-        ("jr-cliff",)
+        ("jr-willow",)
     )
     return rows
 
@@ -76,7 +76,7 @@ def mark_done(task_id: str, summary: str = "") -> bool:
 def log_to_memory(message: str, kind: str = "note"):
     try:
         from memory import session_append
-        session_append(message, agent="JrCliff", kind=kind)
+        session_append(message, agent="JrWillow", kind=kind)
     except Exception:
         pass
 
@@ -85,7 +85,7 @@ def notify_agent(agent_name: str, event: str, message: str, task_id: str = "",
                  priority: int = 0):
     try:
         from mailbox import Mailbox
-        mb = Mailbox("jr-cliff")
+        mb = Mailbox("jr-willow")
         msg_type = event.upper().replace(" ", "_")
         if msg_type not in ("TASK_CREATED", "TASK_ASSIGNED", "TASK_ACK", "TASK_PROGRESS",
                             "TASK_DONE", "TASK_BLOCKED", "REVIEW_NEEDED", "REVIEW_RESULT",
@@ -131,19 +131,19 @@ def ack_task(task: dict):
         assigned_msg = _state.query_one(
             "SELECT * FROM messages WHERE to_agent=? AND type='TASK_ASSIGNED' "
             "AND task_id=? AND status='unread' ORDER BY created_at DESC LIMIT 1",
-            ("jr-cliff", task_id)
+            ("jr-willow", task_id)
         )
         if assigned_msg:
             from mailbox import Mailbox
-            Mailbox("jr-cliff").ack(assigned_msg["id"], "On it — " + title)
+            Mailbox("jr-willow").ack(assigned_msg["id"], "On it — " + title)
     except Exception as e:
         _log(f"ack failed: {e}")
 
     notify_agent("Hephaestus", "TASK_ACK",
                  "ACK — picked up " + task_id + ": Junior Frontend Developer.", task_id)
     notify_agent("Developer", "TASK_ACK",
-                 "@JrCliff ACK'd " + task_id + ": Junior Frontend Developer.", task_id)
-    log_to_memory("JrCliff ACK — picked up " + task_id + ": Junior Frontend Developer", kind="decision")
+                 "@JrWillow ACK'd " + task_id + ": Junior Frontend Developer.", task_id)
+    log_to_memory("JrWillow ACK — picked up " + task_id + ": Junior Frontend Developer", kind="decision")
     _log(f"ACK sent for {task_id}")
 
 
@@ -194,8 +194,8 @@ def do_default_work(task: dict) -> str:
 
     stub_path = work_dir / f"{task_id}-{task_type}.md"
     title_str = "Junior Frontend Developer"
-    owner_str = "JrCliff"
-    areas_str = "46-50"
+    owner_str = "JrWillow"
+    areas_str = "31-35"
     stub_content = f"""# {task_id}: {title}
 
 - Type: {task_type}
@@ -232,7 +232,7 @@ def do_work(task: dict) -> str:
 
 
 def run(message: str = "work", context: dict = None) -> dict:
-    _log(f"JrCliff triggered (task_id={os.environ.get('WEBFORGE_TASK_ID', '')!r})")
+    _log(f"JrWillow triggered (task_id={os.environ.get('WEBFORGE_TASK_ID', '')!r})")
 
     checkpoint("started", {"message": message})
 
@@ -246,15 +246,15 @@ def run(message: str = "work", context: dict = None) -> dict:
             my_tasks = explicit
         else:
             task = _state.query_one("SELECT * FROM tasks WHERE id=?", (explicit_id,))
-            if task and (task.get("owner") or "").lower() == "jr-cliff":
+            if task and (task.get("owner") or "").lower() == "jr-willow":
                 my_tasks = [task]
 
     if not my_tasks:
-        no_work_msg = f"I am JrCliff. No tasks assigned to me."
+        no_work_msg = f"I am JrWillow. No tasks assigned to me."
         _log(no_work_msg)
         complete_run(output=no_work_msg)
         return {
-            "agent": "JrCliff",
+            "agent": "JrWillow",
             "action": "idle",
             "message": no_work_msg,
             "next_step": None,
@@ -270,17 +270,17 @@ def run(message: str = "work", context: dict = None) -> dict:
 
     try:
         notify_agent("Developer", "TASK_PROGRESS",
-                     f"@JrCliff → {task_id}: Starting work", task_id)
+                     f"@JrWillow → {task_id}: Starting work", task_id)
         checkpoint("working", {})
         result_message = do_work(task)
         notify_agent("Developer", "TASK_PROGRESS",
-                     f"@JrCliff → {task_id}: {result_message}", task_id)
+                     f"@JrWillow → {task_id}: {result_message}", task_id)
         checkpoint("work_complete", {"result": result_message})
     except Exception as e:
         err_msg = f"Work failed: {e}"
         _log(err_msg)
         notify_agent("Developer", "TASK_BLOCKED",
-                     f"@JrCliff failed on {task_id}: {e}", task_id, priority=2)
+                     f"@JrWillow failed on {task_id}: {e}", task_id, priority=2)
         try:
             from task import task_block
             task_block(task_id, str(e))
@@ -288,7 +288,7 @@ def run(message: str = "work", context: dict = None) -> dict:
             pass
         complete_run(output=err_msg, exit_code=1)
         return {
-            "agent": "JrCliff", "action": "failed",
+            "agent": "JrWillow", "action": "failed",
             "task_id": task_id, "message": err_msg, "next_step": None,
         }
 
@@ -299,20 +299,20 @@ def run(message: str = "work", context: dict = None) -> dict:
     notify_agent("Hephaestus", "TASK_DONE",
                  f"DONE — {task_id}: {task_title}. {result_message}", task_id)
     notify_agent("Developer", "TASK_DONE",
-                 f"@JrCliff completed {task_id}: {task_title}. Result: {result_message}",
+                 f"@JrWillow completed {task_id}: {task_title}. Result: {result_message}",
                  task_id)
-    log_to_memory(f"JrCliff COMPLETED {task_id}: {task_title} — {result_message}",
+    log_to_memory(f"JrWillow COMPLETED {task_id}: {task_title} — {result_message}",
                   kind="decision")
 
     complete_run(output=result_message, exit_code=0)
 
     return {
-        "agent": "JrCliff",
+        "agent": "JrWillow",
         "action": "work_complete",
         "task_id": task_id,
         "task_title": task_title,
         "message": (
-            f"I am JrCliff. I worked on {task_id}: {task_title}.\n"
+            f"I am JrWillow. I worked on {task_id}: {task_title}.\n"
             f"  Result: {result_message}\n"
             f"  Task marked DONE."
         ),
@@ -322,7 +322,7 @@ def run(message: str = "work", context: dict = None) -> dict:
 
 if __name__ == "__main__":
     msg = " ".join(sys.argv[1:]) or "work"
-    _log(f"=== JrCliff starting (pid={os.getpid()}) ===")
+    _log(f"=== JrWillow starting (pid={os.getpid()}) ===")
     r = run(msg)
-    _log(f"=== JrCliff done: action={r.get('action')} ===")
+    _log(f"=== JrWillow done: action={r.get('action')} ===")
     print(r.get("message", json.dumps(r, indent=2)))
