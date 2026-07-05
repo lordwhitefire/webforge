@@ -439,14 +439,22 @@ class Agent:
             return response
 
         except ImportError:
-            # ContextBuilder not available — fall back to old behavior
+            # ContextBuilder not available — fall back to direct AI call
             pass
         except Exception as e:
             # Log and fall back
-            self._log(f"ask_ai_focused failed ({e}), falling back to old behavior")
+            self._log(f"ask_ai_focused failed ({e}), falling back to direct AI call")
 
-        # ── Fallback: old prompt construction (for backward compat) ──
-        from ai_client import ask_opencode
+        # ── Fallback: direct AI call (no ContextBuilder) ──
+        try:
+            sys.path.insert(0, str(Path.home() / "webforge" / "mcp"))
+            from ai_client import ask_ai
+        except ImportError:
+            return {
+                "status": "error",
+                "message": "AI client not available",
+                "action": "",
+            }
 
         skill = self._load_skill()
 
@@ -462,12 +470,13 @@ class Agent:
             "Never suggest actions outside your role. Stay in character."
         )
 
-        result = ask_opencode(full_prompt, timeout=120)
+        result = ask_ai(full_prompt, model="auto", system=skill[:2000],
+                       task_type="answer", timeout=120)
 
-        if result["status"] != "ok":
+        if result.get("status") != "ok":
             return {
                 "status": "error",
-                "message": result.get("error", "OpenCode call failed"),
+                "message": result.get("error", "AI call failed"),
                 "action": "",
             }
 
@@ -482,7 +491,7 @@ class Agent:
                 "action": "respond",
             }
 
-        self._log(f"ask_ai → {self.name}: {instruction[:100]}...")
+        self._log(f"ask_ai → {self.name} (model={result.get('model','?')}): {instruction[:100]}...")
 
         message_text = response.get("message", "")
         passed, reason = self._check_correction_rules(message_text)

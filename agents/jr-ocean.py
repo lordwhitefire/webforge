@@ -4,7 +4,7 @@ JrOcean — Build Department Worker
 
 STANDALONE script. Does the actual work.
 
-Role: I am Jr-Ocean. I am a Junior Frontend Developer. I report to Sr-Quill2.
+Role: I am JrOcean. I am a Junior Frontend Developer. I report to Sr-Quill2.
 Areas: 26-30
 """
 
@@ -22,7 +22,7 @@ sys.path.insert(0, str(MCP_DIR))
 sys.path.insert(0, str(WEBFORGE_HOME / "agents"))
 
 CONSTRAINTS = {
-    "role": "JrOcean",
+    "role": "Junior Frontend Developer",
     "allowed": ["write_code", "fix_bug", "clone_repo", "answer_question"],
     "forbidden": ["delegate", "route", "approve", "reject"],
 }
@@ -164,10 +164,10 @@ def ack_task(task: dict):
     except ImportError:
         superior = "Hephaestus"
     notify_agent(superior, "TASK_ACK",
-                 "ACK — picked up " + task_id + ": JrOcean.", task_id)
+                 "ACK — picked up " + task_id + ": Junior Frontend Developer.", task_id)
     notify_agent("Developer", "TASK_ACK",
-                 "@JrOcean ACK'd " + task_id + ": JrOcean.", task_id)
-    log_to_memory("JrOcean ACK — picked up " + task_id + ": JrOcean", kind="decision")
+                 "@JrOcean ACK'd " + task_id + ": Junior Frontend Developer.", task_id)
+    log_to_memory("JrOcean ACK — picked up " + task_id + ": Junior Frontend Developer", kind="decision")
     _log(f"ACK sent for {task_id}")
 
 
@@ -209,37 +209,111 @@ def do_clone_repo(repo_url: str, task_id: str) -> str:
 
 
 def do_default_work(task: dict) -> str:
+    """For code tasks: call AI (DeepSeek) to write the code.
+    For other tasks: create a stub file."""
     task_id = task["id"]
     title = task.get("title", "unknown")
     task_type = task.get("type", "feature")
 
+    # For bugfix/feature/refactor tasks, call AI to write actual code
+    if task_type in ("bugfix", "feature", "refactor"):
+        return do_ai_code_work(task)
+
+    # For other task types, create a stub file
     work_dir = _project_root() / ".webforge" / "work"
     work_dir.mkdir(parents=True, exist_ok=True)
 
     stub_path = work_dir / f"{task_id}-{task_type}.md"
-    title_str = "JrOcean"
+    title_str = "Junior Frontend Developer"
     owner_str = "JrOcean"
     areas_str = "26-30"
     stub_content = f"""# {task_id}: {title}
 
 - Type: {task_type}
-- Effort: {{task.get('effort', 'M')}}
+- Effort: {task.get('effort', 'M')}
 - Owner: {owner_str}
-- Started: {{task.get('started_at', _now())}}
+- Started: {task.get('started_at', _now())}
 - Completed: {_now()}
 - Areas: {areas_str}
 
 ## Description
-{{task.get('description', '(no description)')}}
+{task.get('description', '(no description)')}
 
 ## Status
-{owner_str} processed this task. For real code work, the ContextBuilder
-should be invoked via ask_ai_focused() to write actual code.
+{owner_str} processed this task.
 """
     stub_path.write_text(stub_content, encoding="utf-8")
     msg = f"Created work stub: {stub_path.name}"
     _log(msg)
     return msg
+
+
+def do_ai_code_work(task: dict) -> str:
+    """Call AI (DeepSeek) to write code for this task."""
+    task_id = task["id"]
+    title = task.get("title", "unknown")
+    task_type = task.get("type", "feature")
+
+    _log(f"Calling AI to write code for {task_id}: {title}")
+
+    try:
+        from context import ask_ai_focused
+        result = ask_ai_focused(
+            agent_name="jr-ocean",
+            task_id=task_id,
+            call_type="code",
+            instruction=(
+                f"Task: {title}\n"
+                f"Type: {task_type}\n"
+                f"Description: {task.get('description', '(none)')}\n\n"
+                f"Write the code to complete this task. "
+                f"Respond with JSON containing: summary, files_changed (list of "
+                '{"path": str, "content": str} objects), root_cause, fix_verified.'
+            ),
+            response_format='{"summary": str, "files_changed": [{"path": str, "content": str}], "root_cause": str, "fix_verified": bool}',
+            run_id=os.environ.get("WEBFORGE_RUN_ID") or None,
+        )
+
+        if result.get("status") != "ok":
+            return f"AI call failed: {result.get('error', 'unknown')}"
+
+        response = result.get("response", {})
+        model = result.get("model", "unknown")
+        summary = response.get("summary", "(no summary)")
+        files_changed = response.get("files_changed", [])
+
+        # Write the AI-generated files to disk
+        work_dir = _project_root() / ".webforge" / "work" / task_id
+        work_dir.mkdir(parents=True, exist_ok=True)
+
+        for f in files_changed:
+            if isinstance(f, dict):
+                fpath = f.get("path", "")
+                fcontent = f.get("content", "")
+                if fpath and fcontent:
+                    # Write to work dir (not the actual project — that's a separate step)
+                    out_path = work_dir / Path(fpath).name
+                    out_path.write_text(fcontent, encoding="utf-8")
+                    _log(f"Wrote: {out_path}")
+
+        # Save the AI summary
+        summary_path = work_dir / "summary.md"
+        summary_path.write_text(
+            f"# AI Code Work: {task_id}\n\n"
+            f"**Model:** {model}\n\n"
+            f"**Summary:** {summary}\n\n"
+            f"**Root cause:** {response.get('root_cause', 'N/A')}\n\n"
+            f"**Files changed:** {len(files_changed)}\n",
+            encoding="utf-8"
+        )
+
+        msg = f"AI ({model}) wrote code for {task_id}: {summary[:100]}"
+        _log(msg)
+        return msg
+
+    except Exception as e:
+        _log(f"AI code work failed: {e}")
+        return f"AI code work failed: {e}"
 
 
 def do_work(task: dict) -> str:

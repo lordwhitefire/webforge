@@ -418,16 +418,20 @@ def ask_ai_focused(agent_name: str, task_id: str, call_type: str,
                    instruction: str, response_format: str = "",
                    run_id: str = None, timeout: int = 120) -> dict:
     """
-    Build a focused prompt, call OpenCode, save full output to run dir,
-    return only the parsed JSON summary.
+    Build a focused prompt, call AI (DeepSeek/GLM), save output to run dir,
+    return the parsed JSON summary.
 
     This is the function agents should call instead of base.ask_ai().
     It:
       1. Builds a focused prompt via ContextBuilder
-      2. Calls OpenCode via ai_client.ask_opencode
+      2. Calls AI via ai_client.ask_ai (auto-selects DeepSeek or GLM)
       3. Writes the full response to .webforge/runs/<run_id>/output.md
       4. Parses the JSON response
       5. Returns only the parsed dict (keeps orchestrator lean)
+
+    Model selection is automatic based on call_type:
+      code/debug/refactor/review/test → DeepSeek v4 Flash
+      research/docs/plan/answer       → GLM 4.5 Flash
 
     Args:
         agent_name: Which agent is calling
@@ -436,34 +440,48 @@ def ask_ai_focused(agent_name: str, task_id: str, call_type: str,
         instruction: The specific instruction
         response_format: Optional JSON format hint
         run_id: Optional run ID (for saving output to run dir)
-        timeout: OpenCode timeout in seconds
+        timeout: AI call timeout in seconds
 
     Returns:
-        dict with: status, response (parsed JSON), raw (full text), prompt
+        dict with: status, response (parsed JSON), raw (full text), prompt, model
     """
     cb = ContextBuilder()
     prompt = cb.build(agent_name, task_id, call_type, instruction, response_format)
 
-    # Call OpenCode
+    # Load the agent's skill file as system prompt
+    system_prompt = ""
     try:
-        sys.path.insert(0, str(Path.home() / "webforge" / "agents"))
-        from ai_client import ask_opencode
-        result = ask_opencode(prompt, timeout=timeout)
+        from registry import get_agent as registry_get_agent
+        agent = registry_get_agent(agent_name)
+        if agent and agent.skill_file:
+            skill_path = Path.home() / "webforge" / "skills" / agent.skill_file
+            if skill_path.exists():
+                system_prompt = skill_path.read_text(encoding="utf-8")[:2000]
+    except Exception:
+        pass
+
+    # Call AI (auto-selects model based on call_type)
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from ai_client import ask_ai
+        result = ask_ai(prompt, model="auto", system=system_prompt,
+                       task_type=call_type, timeout=timeout)
     except Exception as e:
         return {
             "status": "error",
-            "error": f"OpenCode call failed: {e}",
+            "error": f"AI call failed: {e}",
             "prompt": prompt,
         }
 
     if result.get("status") != "ok":
         return {
             "status": "error",
-            "error": result.get("error", "OpenCode call failed"),
+            "error": result.get("error", "AI call failed"),
             "prompt": prompt,
         }
 
     response_text = result["response"]
+    model_used = result.get("model", "unknown")
 
     # Save full output to run dir
     if run_id:
@@ -472,6 +490,7 @@ def ask_ai_focused(agent_name: str, task_id: str, call_type: str,
             output_path = run_dir(run_id) / "output.md"
             output_path.write_text(
                 f"# AI call: {agent_name} / {call_type} / {task_id}\n\n"
+                f"**Model:** {model_used}\n\n"
                 f"## Prompt\n```\n{prompt}\n```\n\n"
                 f"## Response\n```\n{response_text}\n```\n",
                 encoding="utf-8"
@@ -492,13 +511,15 @@ def ask_ai_focused(agent_name: str, task_id: str, call_type: str,
 
     write_log("Context", agent_name, "ask_ai_focused",
               {"task_id": task_id, "call_type": call_type,
-               "prompt_chars": len(prompt), "response_chars": len(response_text)})
+               "prompt_chars": len(prompt), "response_chars": len(response_text),
+               "model": model_used})
 
     return {
         "status": "ok",
         "response": parsed,
         "raw": response_text,
         "prompt": prompt,
+        "model": model_used,
     }
 
 
